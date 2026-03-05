@@ -1,0 +1,17 @@
+{
+  "name": "obsidian-image-manager",
+  "version": "1.0.0",
+  "description": "Obsidian image management plugin with alignment, library view, and unused image detection",
+  "main": "main.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc -w"
+  },
+  "dependencies": {
+    "@types/node": "^16.18.0"
+  },
+  "devDependencies": {
+    "obsidian": "^1.0.0",
+    "typescript": "^5.0.0"
+  }
+}

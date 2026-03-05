@@ -1,0 +1,11 @@
+{
+	"id": "obsidian-image-manager",
+	"name": "Image Manager",
+	"version": "1.0.0",
+	"description": "Manage images in your Obsidian vault",
+	"author": "Obsidian Image Manager",
+	"authorUrl": "",
+	"fundingUrl": "",
+	"minAppVersion": "0.15.0",
+	"isDesktopOnly": false
+}
