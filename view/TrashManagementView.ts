@@ -2,6 +2,7 @@ import { TFile, TFolder, View, WorkspaceLeaf, setIcon, Menu, MenuItem, Notice } 
 import ImageManagerPlugin from '../main';
 import { formatFileSize } from '../utils/format';
 import { getMediaType } from '../utils/mediaTypes';
+import { isPathSafe } from '../utils/security';
 
 export const VIEW_TYPE_TRASH_MANAGEMENT = 'trash-management-view';
 
@@ -261,6 +262,12 @@ export class TrashManagementView extends View {
 	async restoreFile(item: TrashItem) {
 		try {
 			const targetPath = item.originalPath || item.name;
+
+			if (!isPathSafe(targetPath)) {
+				new Notice(this.plugin.t('restoreFailed').replace('{message}', 'Invalid path'));
+				return;
+			}
+
 			await this.plugin.app.vault.rename(item.file, targetPath);
 			new Notice(this.plugin.t('restoreSuccess').replace('{name}', item.name));
 

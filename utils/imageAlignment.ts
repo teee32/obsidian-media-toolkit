@@ -1,3 +1,5 @@
+import { escapeHtmlAttr } from './security';
+
 export type AlignmentType = 'left' | 'center' | 'right';
 
 export class ImageAlignment {
@@ -53,6 +55,6 @@ export class ImageAlignment {
 			'right': 'display: block; margin-left: auto; margin-right: 0;'
 		};
 
-		return `<img src="${imagePath}" alt="${altText}" style="${styleMap[alignment]}" />`;
+		return `<img src="${escapeHtmlAttr(imagePath)}" alt="${escapeHtmlAttr(altText)}" style="${styleMap[alignment]}" />`;
 	}
 }

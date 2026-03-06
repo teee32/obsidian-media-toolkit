@@ -525,7 +525,7 @@ export class ImageLibraryView extends View {
 				.setIcon('external-link')
 				.onClick(() => {
 					const src = this.app.vault.getResourcePath(file);
-					window.open(src, '_blank');
+					window.open(src, '_blank', 'noopener,noreferrer');
 				});
 		});
 

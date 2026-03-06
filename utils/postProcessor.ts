@@ -1,6 +1,7 @@
 import { MarkdownPostProcessorContext, TFile } from 'obsidian';
 import ImageManagerPlugin from '../main';
 import { AlignmentType } from './imageAlignment';
+import { isSafeUrl } from './security';
 
 /**
  * 图片对齐 PostProcessor
@@ -123,21 +124,21 @@ export class AlignmentPostProcessor {
 
 		// 渲染图片
 		for (const img of images) {
+			if (!isSafeUrl(img.src)) continue;
+
 			const imgEl = document.createElement('img');
 			imgEl.alt = img.alt;
 
-			// 处理内部链接
 			if (!img.src.startsWith('http')) {
 				const file = this.plugin.app.vault.getAbstractFileByPath(img.src);
 				if (file && file instanceof TFile) {
 					imgEl.src = this.plugin.app.vault.getResourcePath(file);
 				} else {
-					// 尝试在附件文件夹中查找
 					const attachmentsPath = this.findFileInVault(img.src);
 					if (attachmentsPath) {
 						imgEl.src = attachmentsPath;
 					} else {
-						imgEl.src = img.src;
+						continue;
 					}
 				}
 			} else {

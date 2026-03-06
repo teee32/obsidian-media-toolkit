@@ -8,6 +8,7 @@ import { ImageAlignment, AlignmentType } from './utils/imageAlignment';
 import { AlignmentPostProcessor } from './utils/postProcessor';
 import { t as translate, getSystemLanguage, Language, Translations } from './utils/i18n';
 import { getEnabledExtensions } from './utils/mediaTypes';
+import { isPathSafe } from './utils/security';
 
 export default class ImageManagerPlugin extends Plugin {
 	settings: ImageManagerSettings = DEFAULT_SETTINGS;
@@ -272,9 +273,13 @@ export default class ImageManagerPlugin extends Plugin {
 			const stylesFile = this.app.vault.getAbstractFileByPath('styles.css');
 			if (stylesFile && stylesFile instanceof TFile) {
 				const content = await this.app.vault.read(stylesFile);
+				const sanitizedCss = content
+					.replace(/expression\s*\(/gi, '/* blocked */(')
+					.replace(/javascript\s*:/gi, '/* blocked */:')
+					.replace(/vbscript\s*:/gi, '/* blocked */:');
 				const styleEl = document.createElement('style');
 				styleEl.id = 'obsidian-media-toolkit-styles';
-				styleEl.textContent = content;
+				styleEl.textContent = sanitizedCss;
 				document.head.appendChild(styleEl);
 			}
 		} catch (error) {
@@ -1004,7 +1009,15 @@ export default class ImageManagerPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const loaded = await this.loadData();
+		const sanitized = loaded && typeof loaded === 'object'
+			? Object.fromEntries(
+				Object.entries(loaded).filter(([k]) =>
+					k !== '__proto__' && k !== 'constructor' && k !== 'prototype'
+				)
+			)
+			: {};
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, sanitized);
 	}
 
 	async saveSettings() {
@@ -1295,6 +1308,12 @@ export default class ImageManagerPlugin extends Plugin {
 		// 移动到隔离文件夹
 		// 使用双下划线 __ 作为分隔符，避免文件名中包含下划线时解析错误
 		const trashPath = this.settings.trashFolder;
+
+		if (!isPathSafe(trashPath)) {
+			new Notice(this.t('operationFailed', { name: file.name }));
+			return false;
+		}
+
 		const fileName = file.name;
 		const timestamp = Date.now();
 		const newFileName = `${timestamp}__${fileName}`;
@@ -1329,6 +1348,11 @@ export default class ImageManagerPlugin extends Plugin {
 	// 恢复隔离文件夹中的文件
 	async restoreFile(file: TFile, originalPath: string): Promise<boolean> {
 		const { vault } = this.app;
+
+		if (!isPathSafe(originalPath)) {
+			new Notice(this.t('restoreFailed'));
+			return false;
+		}
 
 		try {
 			await vault.rename(file, originalPath);
