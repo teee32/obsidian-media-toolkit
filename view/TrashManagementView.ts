@@ -35,11 +35,14 @@ export class TrashManagementView extends View {
 	}
 
 	async onOpen() {
-		if (!this.containerEl || !this.containerEl.children[1]) {
-			console.error('TrashManagementView: containerEl not ready');
+		// 等待 contentEl 准备好
+		if (!this.contentEl) {
+			await new Promise(resolve => setTimeout(resolve, 100));
+		}
+		if (!this.contentEl) {
+			console.error('TrashManagementView: contentEl not ready');
 			return;
 		}
-		this.contentEl = this.containerEl.children[1] as HTMLElement;
 		this.contentEl.addClass('trash-management-view');
 		await this.loadTrashItems();
 	}
