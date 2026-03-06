@@ -279,9 +279,26 @@ export default class ImageManagerPlugin extends Plugin {
 			if (stylesFile && stylesFile instanceof TFile) {
 				const content = await this.app.vault.read(stylesFile);
 				const sanitizedCss = content
+					// 阻止 expression() 等 JavaScript 执行
 					.replace(/expression\s*\(/gi, '/* blocked */(')
 					.replace(/javascript\s*:/gi, '/* blocked */:')
-					.replace(/vbscript\s*:/gi, '/* blocked */:');
+					.replace(/vbscript\s*:/gi, '/* blocked */:')
+					// 阻止 url() 引用外部资源
+					.replace(/url\s*\([^)]*\)/gi, '/* url() blocked */')
+					// 阻止 @import 引入外部样式
+					.replace(/@import\s*[^;]+;/gi, '/* @import blocked */')
+					// 阻止事件处理器属性 (onclick, onerror, onload, onmouseover 等)
+					.replace(/\bon(click|error|load|mouseover|mouseout|focus|blur|change|submit|keydown|keyup)\s*=/gi, 'data-blocked-on$1=')
+					// 阻止 filter:url() 引用外部资源
+					.replace(/filter\s*:\s*url\s*\([^)]*\)/gi, '/* filter:url() blocked */')
+					// 阻止 behavior (IE 行为属性)
+					.replace(/behavior\s*:/gi, '/* behavior blocked */:')
+					// 阻止 -ms-behavior (IE 专有)
+					.replace(/-ms-behavior\s*:/gi, '/* -ms-behavior blocked */:')
+					// 阻止 binding (XUL 绑定)
+					.replace(/binding\s*:\s*url\s*\([^)]*\)/gi, '/* binding blocked */')
+					// 阻止 animation/transition 中的 url()
+					.replace(/(animation|transition)\s*:[^;]*url\s*\([^)]*\)/gi, '/* $1 url() blocked */');
 				const styleEl = document.createElement('style');
 				styleEl.id = 'obsidian-media-toolkit-styles';
 				styleEl.textContent = sanitizedCss;
@@ -1087,6 +1104,12 @@ export default class ImageManagerPlugin extends Plugin {
 			enablePDF: this.settings.enablePDF
 		});
 
+		// 检查是否所有媒体类型都被禁用
+		if (enabledExtensions.length === 0) {
+			new Notice(this.t('allMediaTypesDisabled'));
+			return [];
+		}
+
 		const allFiles = this.app.vault.getFiles();
 		return allFiles.filter(file =>
 			enabledExtensions.some(ext => file.name.toLowerCase().endsWith(ext))
@@ -1099,12 +1122,17 @@ export default class ImageManagerPlugin extends Plugin {
 	}
 
 	// 获取所有Markdown文件中引用的图片
-	async getReferencedImages(): Promise<Set<string>> {
+	async getReferencedImages(signal?: AbortSignal): Promise<Set<string>> {
 		const now = Date.now();
 
 		// 检查缓存是否有效
 		if (this.referencedImagesCache && (now - this.cacheTimestamp) < ImageManagerPlugin.CACHE_DURATION) {
 			return this.referencedImagesCache;
+		}
+
+		// 检查是否已中止
+		if (signal?.aborted) {
+			throw new Error('Scan cancelled');
 		}
 
 		const referenced = new Set<string>();
@@ -1113,6 +1141,28 @@ export default class ImageManagerPlugin extends Plugin {
 		// 使用正则扫描所有 Markdown 文件
 		const markdownFiles = vault.getFiles().filter(f => f.extension === 'md');
 		const totalFiles = markdownFiles.length;
+
+		// 扫描超时保护（默认 5 分钟）
+		const SCAN_TIMEOUT = 5 * 60 * 1000;
+		const scanStartTime = Date.now();
+		let timeoutId: NodeJS.Timeout | null = null;
+
+		// 如果传入了外部 signal，则不设置内部超时
+		if (!signal) {
+			timeoutId = setTimeout(() => {
+				console.warn('Scan timeout reached, returning partial results');
+			}, SCAN_TIMEOUT);
+		}
+
+		// 监听外部中止信号
+		if (signal) {
+			signal.addEventListener('abort', () => {
+				if (timeoutId) {
+					clearTimeout(timeoutId);
+				}
+				console.warn('Scan aborted by external signal');
+			});
+		}
 
 		// 对于大型 Vault，显示开始扫描通知
 		// 注意：Obsidian 的 Notice 不支持动态更新，每次 setMessage() 会创建新的 Notice
@@ -1125,9 +1175,24 @@ export default class ImageManagerPlugin extends Plugin {
 		// 分批处理以避免阻塞 UI
 		const BATCH_SIZE = 20;
 		for (let i = 0; i < markdownFiles.length; i += BATCH_SIZE) {
+			// 检查超时或中止
+			if (Date.now() - scanStartTime > SCAN_TIMEOUT) {
+				console.warn('Scan timeout reached, returning partial results');
+				break;
+			}
+			if (signal?.aborted) {
+				console.warn('Scan aborted');
+				break;
+			}
+
 			const batch = markdownFiles.slice(i, i + BATCH_SIZE);
 
 			await Promise.all(batch.map(async (file) => {
+				// 检查中止信号
+				if (signal?.aborted) {
+					return;
+				}
+
 				let content: string;
 				try {
 					content = await vault.read(file);
@@ -1135,11 +1200,27 @@ export default class ImageManagerPlugin extends Plugin {
 					return;
 				}
 
+				// 根据设置动态获取启用的媒体扩展名
+				const enabledExtensions = getEnabledExtensions({
+					enableImages: this.settings.enableImages,
+					enableVideos: this.settings.enableVideos,
+					enableAudio: this.settings.enableAudio,
+					enablePDF: this.settings.enablePDF
+				});
+
+				// 将扩展名格式化为正则表达式所需的格式（去掉前导点号）
+				const extensionPattern = enabledExtensions.map(ext => ext.slice(1)).join('|');
+
+				// 如果没有启用任何媒体类型，返回空结果
+				if (!extensionPattern) {
+					return referenced;
+				}
+
 				// 匹配各种链接格式
 				// [[filename.png]] 或 [[path/to/filename.png]] 或 [[filename.png|alias]]
-				const wikiLinkPattern = /\[\[([^\]|]+\.(?:png|jpg|jpeg|gif|webp|svg|bmp|mov|mp4|mp3|wav|pdf))(?:\|[^\]]*)?\]\]/gi;
+				const wikiLinkPattern = new RegExp(`\\[\\[([^\\]|]+\\.(?:${extensionPattern}))(?:\\|[^\\]]*)?\\]\\]`, 'gi');
 				// ![alt](path/to/image.png)
-				const markdownLinkPattern = /!\[.*?\]\(([^)]+\.(?:png|jpg|jpeg|gif|webp|svg|bmp|mov|mp4|mp3|wav|pdf))\)/gi;
+				const markdownLinkPattern = new RegExp(`!\\[.*?\\]\\(([^)]+\\.(?:${extensionPattern}))\\)`, 'gi');
 
 				let match;
 
@@ -1164,8 +1245,19 @@ export default class ImageManagerPlugin extends Plugin {
 				}
 			}));
 
+			// 更新扫描进度通知
+			if (scanNotice && i % (BATCH_SIZE * 5) === 0) {
+				scanNotice.hide();
+				scanNotice = new Notice(this.t('scanningReferences') + ` (${Math.min(i + BATCH_SIZE, totalFiles)}/${totalFiles})`, 0);
+			}
+
 			// 让 UI 有机会更新
 			await new Promise(resolve => setTimeout(resolve, 0));
+		}
+
+		// 清理超时定时器
+		if (timeoutId) {
+			clearTimeout(timeoutId);
 		}
 
 		// 扫描完成，显示完成通知
@@ -1269,7 +1361,7 @@ export default class ImageManagerPlugin extends Plugin {
 
 		// 根据对齐方式显示对应的消息
 		const alignmentKey = alignment === 'left' ? 'imageAlignedLeft' : alignment === 'center' ? 'imageAlignedCenter' : 'imageAlignedRight';
-		new Notice(this.t(alignmentKey as any));
+		new Notice(this.t(alignmentKey));
 	}
 
 	// 添加编辑器上下文菜单项

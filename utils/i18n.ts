@@ -23,6 +23,7 @@ export interface Translations {
 	// 媒体库
 	totalMediaFiles: string;
 	noMediaFiles: string;
+	allMediaTypesDisabled: string;
 	searchPlaceholder: string;
 	searchResults: string;
 
@@ -148,6 +149,7 @@ export interface Translations {
 	fileDeleted: string;
 	restoreSuccess: string;
 	restoreFailed: string;
+	targetFileExists: string;
 	deleteFailed: string;
 	fileNameCopied: string;
 	originalPathCopied: string;
@@ -238,6 +240,7 @@ const zh: Translations = {
 	// 媒体库
 	totalMediaFiles: '共 {count} 个媒体文件',
 	noMediaFiles: '未找到媒体文件',
+	allMediaTypesDisabled: '所有媒体类型已被禁用，请到设置中启用至少一种媒体类型',
 	searchPlaceholder: '搜索文件名...',
 	searchResults: '找到 {count} 个结果',
 
@@ -363,6 +366,7 @@ const zh: Translations = {
 	fileDeleted: '已彻底删除: {name}',
 	restoreSuccess: '已恢复: {name}',
 	restoreFailed: '恢复失败: {message}',
+	targetFileExists: '目标文件已存在',
 	deleteFailed: '删除失败',
 	fileNameCopied: '文件名已复制',
 	originalPathCopied: '原始路径已复制',
@@ -453,6 +457,7 @@ const en: Translations = {
 	// Media Library
 	totalMediaFiles: '{count} media files',
 	noMediaFiles: 'No media files found',
+	allMediaTypesDisabled: 'All media types have been disabled. Please enable at least one media type in settings',
 	searchPlaceholder: 'Search by filename...',
 	searchResults: '{count} results found',
 
@@ -578,6 +583,7 @@ const en: Translations = {
 	fileDeleted: 'Permanently deleted: {name}',
 	restoreSuccess: 'Restored: {name}',
 	restoreFailed: 'Restore failed: {message}',
+	targetFileExists: 'Target file already exists',
 	deleteFailed: 'Delete failed',
 	fileNameCopied: 'File name copied',
 	originalPathCopied: 'Original path copied',
@@ -671,7 +677,9 @@ export function t(lang: Language, key: keyof Translations, params?: Record<strin
  * 获取系统语言设置
  */
 export function getSystemLanguage(): Language {
-	const lang = navigator.language.toLowerCase();
+	// 检查 navigator 是否存在（非浏览器环境可能不存在）
+	const navLanguage = typeof navigator !== 'undefined' ? navigator.language : null;
+	const lang = navLanguage ? navLanguage.toLowerCase() : 'zh';
 	if (lang.startsWith('zh')) return 'zh';
 	return 'en';
 }

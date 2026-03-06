@@ -33,7 +33,7 @@ export class DeleteConfirmModal extends Modal {
 		contentEl.empty();
 
 		// 使用翻译函数
-		const t = (key: string) => this.plugin.t(key as any);
+		const t = (key: string) => this.plugin.t(key);
 
 		// 标题
 		contentEl.createEl('h2', {

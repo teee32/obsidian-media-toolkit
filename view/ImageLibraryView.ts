@@ -93,6 +93,7 @@ export class ImageLibraryView extends ItemView {
 		let filteredImages: TFile[];
 		if (this.plugin.settings.imageFolder) {
 			const folder = this.plugin.settings.imageFolder;
+			// 添加空字符串检查，避免 prefix 变成 /
 			const prefix = folder.endsWith('/') ? folder : folder + '/';
 			filteredImages = imageFiles.filter(f => f.path.startsWith(prefix) || f.path === folder);
 		} else {
@@ -509,8 +510,13 @@ export class ImageLibraryView extends ItemView {
 			item.setTitle(this.plugin.t('copyPath'))
 				.setIcon('link')
 				.onClick(() => {
-					navigator.clipboard.writeText(file.path);
-					new Notice(this.plugin.t('pathCopied'));
+					try {
+						navigator.clipboard.writeText(file.path);
+						new Notice(this.plugin.t('pathCopied'));
+					} catch (error) {
+						console.error('复制到剪贴板失败:', error);
+						new Notice(this.plugin.t('error'));
+					}
 				});
 		});
 
@@ -518,9 +524,14 @@ export class ImageLibraryView extends ItemView {
 			item.setTitle(this.plugin.t('copyLink'))
 				.setIcon('copy')
 				.onClick(() => {
-					const link = `[[${file.name}]]`;
-					navigator.clipboard.writeText(link);
-					new Notice(this.plugin.t('linkCopied'));
+					try {
+						const link = `[[${file.name}]]`;
+						navigator.clipboard.writeText(link);
+						new Notice(this.plugin.t('linkCopied'));
+					} catch (error) {
+						console.error('复制到剪贴板失败:', error);
+						new Notice(this.plugin.t('error'));
+					}
 				});
 		});
 

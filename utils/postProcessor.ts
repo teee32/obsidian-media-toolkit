@@ -39,8 +39,10 @@ export class AlignmentPostProcessor {
 
 		while (node = walker.nextNode() as Text) {
 			const text = node.textContent || '';
+			const parentElement = node.parentElement;
+			if (!parentElement) continue;
 			if (text.includes('===') && (text.includes('center') || text.includes('left') || text.includes('right'))) {
-				nodesToProcess.push({ node, parent: node.parentElement! });
+				nodesToProcess.push({ node, parent: parentElement });
 			}
 		}
 

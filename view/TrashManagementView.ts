@@ -1,4 +1,4 @@
-import { TFile, TFolder, ItemView, WorkspaceLeaf, setIcon, Menu, MenuItem, Notice } from 'obsidian';
+import { TFile, TFolder, ItemView, WorkspaceLeaf, setIcon, Menu, MenuItem, Notice, Modal, ButtonComponent } from 'obsidian';
 import ImageManagerPlugin from '../main';
 import { formatFileSize } from '../utils/format';
 import { getMediaType } from '../utils/mediaTypes';
@@ -77,9 +77,9 @@ export class TrashManagementView extends ItemView {
 			for (const file of trashFolder.children) {
 				if (file instanceof TFile) {
 					// 从文件名中提取原始路径（格式：timestamp__originalPath）
-					// 使用双下划线 __ 作为分隔符，避免文件名中包含下划线时解析错误
+					// 使用 lastIndexOf 查找最后一个双下划线，避免文件名本身包含 __ 时解析错误
 					let originalPath: string | undefined;
-					const separatorIndex = file.name.indexOf('__');
+					const separatorIndex = file.name.lastIndexOf('__');
 					if (separatorIndex !== -1) {
 						// 去掉时间戳部分，剩余的就是原始路径
 						originalPath = file.name.substring(separatorIndex + 2);
@@ -242,8 +242,13 @@ export class TrashManagementView extends ItemView {
 			menuItem.setTitle(this.plugin.t('copiedFileName'))
 				.setIcon('copy')
 				.onClick(() => {
-					navigator.clipboard.writeText(trashItem.name);
-					new Notice(this.plugin.t('fileNameCopied'));
+					try {
+						navigator.clipboard.writeText(trashItem.name);
+						new Notice(this.plugin.t('fileNameCopied'));
+					} catch (error) {
+						console.error('复制到剪贴板失败:', error);
+						new Notice(this.plugin.t('error'));
+					}
 				});
 		});
 
@@ -252,8 +257,13 @@ export class TrashManagementView extends ItemView {
 				.setIcon('link')
 				.onClick(() => {
 					if (trashItem.originalPath) {
-						navigator.clipboard.writeText(trashItem.originalPath);
-						new Notice(this.plugin.t('originalPathCopied'));
+						try {
+							navigator.clipboard.writeText(trashItem.originalPath);
+							new Notice(this.plugin.t('originalPathCopied'));
+						} catch (error) {
+							console.error('复制到剪贴板失败:', error);
+							new Notice(this.plugin.t('error'));
+						}
 					}
 				});
 		});
@@ -273,6 +283,27 @@ export class TrashManagementView extends ItemView {
 				return;
 			}
 
+			// 检查目标路径是否已存在同名文件
+			const targetFile = this.plugin.app.vault.getAbstractFileByPath(targetPath);
+			if (targetFile) {
+				new Notice(this.plugin.t('restoreFailed').replace('{message}', this.plugin.t('targetFileExists')));
+				return;
+			}
+
+			// 检查父目录是否存在
+			const parentPath = targetPath.substring(0, targetPath.lastIndexOf('/'));
+			if (parentPath) {
+				const parentFolder = this.plugin.app.vault.getAbstractFileByPath(parentPath);
+				if (!parentFolder) {
+					new Notice(this.plugin.t('restoreFailed').replace('{message}', 'Parent directory does not exist'));
+					return;
+				}
+				if (!(parentFolder instanceof TFolder)) {
+					new Notice(this.plugin.t('restoreFailed').replace('{message}', 'Parent path is not a directory'));
+					return;
+				}
+			}
+
 			await this.plugin.app.vault.rename(item.file, targetPath);
 			new Notice(this.plugin.t('restoreSuccess').replace('{name}', item.name));
 
@@ -286,10 +317,53 @@ export class TrashManagementView extends ItemView {
 	}
 
 	/**
+	 * 显示国际化确认对话框
+	 */
+	private showConfirmModal(message: string): Promise<boolean> {
+		return new Promise((resolve) => {
+			const modal = new Modal(this.plugin.app);
+			let resolved = false;
+
+			modal.onClose = () => {
+				if (!resolved) {
+					resolved = true;
+					resolve(false);
+				}
+			};
+
+			modal.contentEl.createDiv({ cls: 'confirm-modal-content' }, (el) => {
+				el.createDiv({ text: message, cls: 'confirm-modal-message' });
+				el.createDiv({ cls: 'confirm-modal-buttons' }, (buttonsEl) => {
+					const cancelBtn = new ButtonComponent(buttonsEl);
+					cancelBtn.setButtonText(this.plugin.t('cancel'));
+					cancelBtn.onClick(() => {
+						resolved = true;
+						modal.close();
+						resolve(false);
+					});
+
+					const confirmBtn = new ButtonComponent(buttonsEl);
+					confirmBtn.setButtonText(this.plugin.t('confirm'));
+					confirmBtn.setCta();
+					confirmBtn.onClick(() => {
+						resolved = true;
+						modal.close();
+						resolve(true);
+					});
+				});
+			});
+
+			modal.open();
+		});
+	}
+
+	/**
 	 * 确认删除单个文件
 	 */
 	async confirmDelete(item: TrashItem) {
-		const confirmed = confirm(this.plugin.t('confirmDeleteFile').replace('{name}', item.name));
+		const confirmed = await this.showConfirmModal(
+			this.plugin.t('confirmDeleteFile').replace('{name}', item.name)
+		);
 
 		if (confirmed) {
 			try {
@@ -315,7 +389,7 @@ export class TrashManagementView extends ItemView {
 			return;
 		}
 
-		const confirmed = confirm(
+		const confirmed = await this.showConfirmModal(
 			this.plugin.t('confirmClearTrash').replace('{count}', String(this.trashItems.length))
 		);
 
