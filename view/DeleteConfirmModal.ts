@@ -32,25 +32,28 @@ export class DeleteConfirmModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
+		// 使用翻译函数
+		const t = (key: string) => this.plugin.t(key as any);
+
 		// 标题
 		contentEl.createEl('h2', {
 			text: this.images.length === 1
-				? '确认删除'
-				: `确认删除 ${this.images.length} 个文件`
+				? t('confirmDeleteFile').replace('{name}', this.images[0].name)
+				: t('confirmDeleteSelected').replace('{count}', String(this.images.length))
 		});
 
 		// 警告信息
 		const warning = contentEl.createDiv({ cls: 'modal-warning' });
 		const warningText = warning.createEl('p');
 		warningText.textContent = this.plugin.settings.useTrashFolder
-			? '文件将被移至隔离文件夹，您可以在设置中恢复或彻底删除。'
-			: '此操作不可撤销，文件将被永久删除。';
+			? t('deleteToTrash')
+			: t('confirmClearAll');
 		warningText.style.color = 'var(--text-warning)';
 		warningText.style.margin = '16px 0';
 
 		// 文件列表
 		const listContainer = contentEl.createDiv({ cls: 'modal-file-list' });
-		listContainer.createEl('h3', { text: '以下文件将被删除：' });
+		listContainer.createEl('h3', { text: t('deleteToTrash') });
 
 		const list = listContainer.createEl('ul');
 		const maxShow = 10;
@@ -62,7 +65,7 @@ export class DeleteConfirmModal extends Modal {
 		}
 		if (this.images.length > maxShow) {
 			list.createEl('li', {
-				text: `... 以及其他 ${this.images.length - maxShow} 个文件`
+				text: `... ${this.images.length - maxShow} ${t('filesScanned')}`
 			});
 		}
 
@@ -75,31 +78,31 @@ export class DeleteConfirmModal extends Modal {
 
 		// 取消按钮
 		const cancelBtn = buttonContainer.createEl('button', {
-			text: '取消',
+			text: t('cancel'),
 			cls: 'mod-cta'
 		});
 		cancelBtn.addEventListener('click', () => this.close());
 
 		// 删除按钮
 		const deleteBtn = buttonContainer.createEl('button', {
-			text: this.plugin.settings.useTrashFolder ? '移至隔离文件夹' : '删除',
+			text: this.plugin.settings.useTrashFolder ? t('deleteToTrash') : t('delete'),
 			cls: 'mod-warning'
 		});
 		deleteBtn.addEventListener('click', async () => {
 			if (this.isDeleting) return;
 			this.isDeleting = true;
 			deleteBtn.setAttribute('disabled', 'true');
-			deleteBtn.textContent = '处理中...';
+			deleteBtn.textContent = t('processing') || '处理中...';
 
 			try {
 				await this.onConfirm();
 				this.close();
 			} catch (error) {
 				console.error('删除操作失败:', error);
-				new Notice('删除操作失败');
+				new Notice(t('deleteFailed'));
 				this.isDeleting = false;
 				deleteBtn.removeAttribute('disabled');
-				deleteBtn.textContent = this.plugin.settings.useTrashFolder ? '移至隔离文件夹' : '删除';
+				deleteBtn.textContent = this.plugin.settings.useTrashFolder ? t('deleteToTrash') : t('delete');
 			}
 		});
 	}

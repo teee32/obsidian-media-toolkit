@@ -301,7 +301,7 @@ export default class ImageManagerPlugin extends Plugin {
 
 		const styleEl = document.createElement('style');
 		styleEl.id = 'image-manager-styles';
-		styleEl.textContent = `\/* Obsidian Image Manager Plugin Styles *\/
+		styleEl.textContent = `/* Obsidian Image Manager Plugin Styles */
 
 /* ===== 全局样式 ===== */
 .image-library-view,
@@ -1038,6 +1038,15 @@ export default class ImageManagerPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	/**
+	 * 清除引用缓存
+	 * 当设置变更影响缓存有效性时调用
+	 */
+	clearCache() {
+		this.referencedImagesCache = null;
+		this.cacheTimestamp = 0;
 	}
 
 	async openImageLibrary() {

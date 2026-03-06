@@ -79,6 +79,7 @@ export class SettingsTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.imageFolder)
 				.onChange(async (value) => {
 					this.plugin.settings.imageFolder = value;
+					this.plugin.clearCache();
 					await this.plugin.saveSettings();
 				}));
 
@@ -227,6 +228,7 @@ export class SettingsTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.enableImages)
 				.onChange(async (value) => {
 					this.plugin.settings.enableImages = value;
+					this.plugin.clearCache();
 					await this.plugin.saveSettings();
 				}));
 
@@ -237,6 +239,7 @@ export class SettingsTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.enableVideos)
 				.onChange(async (value) => {
 					this.plugin.settings.enableVideos = value;
+					this.plugin.clearCache();
 					await this.plugin.saveSettings();
 				}));
 
@@ -247,6 +250,7 @@ export class SettingsTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.enableAudio)
 				.onChange(async (value) => {
 					this.plugin.settings.enableAudio = value;
+					this.plugin.clearCache();
 					await this.plugin.saveSettings();
 				}));
 
@@ -257,6 +261,7 @@ export class SettingsTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.enablePDF)
 				.onChange(async (value) => {
 					this.plugin.settings.enablePDF = value;
+					this.plugin.clearCache();
 					await this.plugin.saveSettings();
 				}));
 

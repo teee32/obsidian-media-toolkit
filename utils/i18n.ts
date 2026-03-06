@@ -217,6 +217,7 @@ export interface Translations {
 	deleteFailedWithName: string;
 	deletedWithQuarantineFailed: string;
 	operationFailed: string;
+	processing: string;
 }
 
 const zh: Translations = {
@@ -430,7 +431,8 @@ const zh: Translations = {
 	// 删除操作
 	deleteFailedWithName: '删除失败: {name}',
 	deletedWithQuarantineFailed: '已删除: {name}（隔离失败）',
-	operationFailed: '操作失败: {name}'
+	operationFailed: '操作失败: {name}',
+	processing: '处理中...'
 };
 
 const en: Translations = {
@@ -644,7 +646,8 @@ const en: Translations = {
 	// Delete operations
 	deleteFailedWithName: 'Delete failed: {name}',
 	deletedWithQuarantineFailed: 'Deleted: {name} (quarantine failed)',
-	operationFailed: 'Operation failed: {name}'
+	operationFailed: 'Operation failed: {name}',
+	processing: 'Processing...'
 };
 
 const translations: Record<Language, Translations> = { zh, en };
