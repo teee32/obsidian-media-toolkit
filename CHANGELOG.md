@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.1] - 2026-03-06
+
+### Added
+- 提取 formatFileSize 到 utils/format.ts 工具函数
+- 添加搜索防抖机制 (300ms)
+- 批量删除/清空使用 Promise.all 并发处理
+- ImageLibraryView pageSize 从 settings 读取
+- 国际化完善（所有硬编码中文替换）
+- 添加缓存刷新命令
+- 提取文件扩展名到 utils/mediaTypes.ts 统一管理
+- 设置变更同步（监听 setting-changed 事件）
+- 排序后自动重置到第一页
+- 隔离文件夹自动清理逻辑
+
+### Fixed
+- onunload 添加 TRASH_MANAGEMENT 视图清理
+- 修复 main.ts 中命令名称硬编码问题
+- 修复 Notice 消息硬编码问题
+
+---
+
 ## [1.1.0] - 2026-03-06
 
 ### Added
