@@ -63,6 +63,15 @@ export class MediaPreviewModal extends Modal {
 				cls: 'preview-image',
 				attr: { src: this.app.vault.getResourcePath(file) }
 			});
+
+			// 图片加载失败时显示错误状态
+			img.addEventListener('error', () => {
+				container.empty();
+				container.createDiv({
+					cls: 'preview-error',
+					text: this.plugin.t('imageLoadError') || 'Failed to load image'
+				});
+			});
 		} else if (isVideo) {
 			const video = container.createEl('video', {
 				cls: 'preview-video',
@@ -78,7 +87,10 @@ export class MediaPreviewModal extends Modal {
 		} else if (isPdf) {
 			const iframe = container.createEl('iframe', {
 				cls: 'preview-pdf',
-				attr: { src: this.app.vault.getResourcePath(file) }
+				attr: {
+					src: this.app.vault.getResourcePath(file),
+					sandbox: 'allow-scripts'
+				}
 			});
 		} else {
 			container.createDiv({ cls: 'preview-unsupported', text: this.plugin.t('unsupportedFileType') });
@@ -208,6 +220,11 @@ export class MediaPreviewModal extends Modal {
 	 * 更新内容
 	 */
 	updateContent() {
+		// 检查 contentEl 是否存在
+		if (!this.contentEl) {
+			return;
+		}
+
 		const container = this.contentEl.querySelector('.preview-container');
 		if (container) {
 			this.renderMedia(container as HTMLElement);

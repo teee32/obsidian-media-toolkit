@@ -56,6 +56,11 @@ export class TrashManagementView extends ItemView {
 	 * 加载隔离文件夹中的文件
 	 */
 	async loadTrashItems() {
+		// 如果视图已关闭或 contentEl 不可用，直接返回
+		if (!this.contentEl) {
+			return;
+		}
+
 		if (this.isLoading) return;
 		this.isLoading = true;
 		this.contentEl.empty();
@@ -125,6 +130,11 @@ export class TrashManagementView extends ItemView {
 	 * 渲染视图
 	 */
 	async renderView() {
+		// 如果视图已关闭或 contentEl 不可用，直接返回
+		if (!this.contentEl) {
+			return;
+		}
+
 		this.contentEl.empty();
 
 		// 创建头部
@@ -286,7 +296,19 @@ export class TrashManagementView extends ItemView {
 	 */
 	async restoreFile(item: TrashItem) {
 		try {
-			const targetPath = item.originalPath || item.name;
+			// 如果 originalPath 存在，使用它
+			// 如果 originalPath 为空，说明文件名没有被修改（不含时间戳前缀），应该使用原文件名
+			let targetPath = item.originalPath;
+			if (!targetPath) {
+				// 从 item.name 中提取原始文件名（去掉时间戳前缀）
+				const separatorIndex = item.name.lastIndexOf('__');
+				if (separatorIndex !== -1) {
+					targetPath = item.name.substring(separatorIndex + 2);
+				} else {
+					// 完全没有时间戳前缀，直接使用原文件名
+					targetPath = item.name;
+				}
+			}
 
 			if (!isPathSafe(targetPath)) {
 				new Notice(this.plugin.t('restoreFailed').replace('{message}', 'Invalid path'));

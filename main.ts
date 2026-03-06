@@ -1046,6 +1046,10 @@ export default class ImageManagerPlugin extends Plugin {
 			if (!['small', 'medium', 'large'].includes(merged.thumbnailSize)) {
 				merged.thumbnailSize = 'medium';
 			}
+			// 语言设置类型验证
+			if (!['zh', 'en', 'system'].includes(merged.language)) {
+				merged.language = 'system';
+			}
 			this.settings = merged;
 		} catch (error) {
 			console.error('加载设置失败，使用默认设置:', error);

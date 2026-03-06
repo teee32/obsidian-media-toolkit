@@ -41,7 +41,7 @@ export class ImageLibraryView extends ItemView {
 	}
 
 	getDisplayText() {
-		return '媒体库';
+		return this.plugin.t('mediaLibrary');
 	}
 
 	async onOpen() {
@@ -87,6 +87,11 @@ export class ImageLibraryView extends ItemView {
 	}
 
 	async refreshImages() {
+		// 如果视图已关闭或 contentEl 不可用，直接返回
+		if (!this.contentEl) {
+			return;
+		}
+
 		const sizeMap: Record<string, 'small' | 'medium' | 'large'> = {
 			'small': 'small',
 			'medium': 'medium',
@@ -474,6 +479,15 @@ export class ImageLibraryView extends ItemView {
 				src: src,
 				alt: image.name
 			}
+		});
+
+		// 图片加载失败时显示错误状态
+		img.addEventListener('error', () => {
+			imgContainer.empty();
+			imgContainer.createDiv({
+				cls: 'image-error',
+				text: this.plugin.t('imageLoadError')
+			});
 		});
 
 		img.addEventListener('click', () => {

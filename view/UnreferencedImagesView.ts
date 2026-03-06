@@ -54,6 +54,11 @@ export class UnreferencedImagesView extends ItemView {
 	}
 
 	async scanUnreferencedImages() {
+		// 如果视图已关闭或 contentEl 不可用，直接返回
+		if (!this.contentEl) {
+			return;
+		}
+
 		this.isScanning = true;
 		this.contentEl.empty();
 
@@ -91,6 +96,11 @@ export class UnreferencedImagesView extends ItemView {
 	}
 
 	async renderView() {
+		// 如果视图已关闭或 contentEl 不可用，直接返回
+		if (!this.contentEl) {
+			return;
+		}
+
 		this.contentEl.empty();
 
 		// 创建头部
@@ -156,11 +166,20 @@ export class UnreferencedImagesView extends ItemView {
 		// 图片缩略图
 		const thumbnail = item.createDiv({ cls: 'item-thumbnail' });
 		const src = this.app.vault.getResourcePath(image.file);
-		thumbnail.createEl('img', {
+		const img = thumbnail.createEl('img', {
 			attr: {
 				src: src,
 				alt: image.name
 			}
+		});
+
+		// 图片加载失败时显示错误状态
+		img.addEventListener('error', () => {
+			thumbnail.empty();
+			thumbnail.createDiv({
+				cls: 'image-error',
+				text: this.plugin.t('imageLoadError')
+			});
 		});
 
 		// 图片信息

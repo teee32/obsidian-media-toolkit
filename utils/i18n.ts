@@ -185,6 +185,7 @@ export interface Translations {
 	findInNotes: string;
 	pathCopied: string;
 	linkCopied: string;
+	imageLoadError: string;
 
 	// 图片对齐
 	alignImageLeft: string;
@@ -402,6 +403,7 @@ const zh: Translations = {
 	findInNotes: '在笔记中查找',
 	pathCopied: '路径已复制',
 	linkCopied: '链接已复制',
+	imageLoadError: '图片加载失败',
 
 	// 图片对齐
 	alignImageLeft: '图片居左对齐',
@@ -619,6 +621,7 @@ const en: Translations = {
 	findInNotes: 'Find in Notes',
 	pathCopied: 'Path copied',
 	linkCopied: 'Link copied',
+	imageLoadError: 'Image failed to load',
 
 	// Image alignment
 	alignImageLeft: 'Align Image Left',
