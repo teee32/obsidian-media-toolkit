@@ -35,6 +35,10 @@ export class TrashManagementView extends View {
 	}
 
 	async onOpen() {
+		if (!this.containerEl || !this.containerEl.children[1]) {
+			console.error('TrashManagementView: containerEl not ready');
+			return;
+		}
 		this.contentEl = this.containerEl.children[1] as HTMLElement;
 		this.contentEl.addClass('trash-management-view');
 		await this.loadTrashItems();

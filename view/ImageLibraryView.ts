@@ -46,6 +46,10 @@ export class ImageLibraryView extends View {
 	}
 
 	async onOpen() {
+		if (!this.containerEl || !this.containerEl.children[1]) {
+			console.error('ImageLibraryView: containerEl not ready');
+			return;
+		}
 		this.contentEl = this.containerEl.children[1] as HTMLElement;
 		this.contentEl.addClass('image-library-view');
 		// 从设置中读取 pageSize
