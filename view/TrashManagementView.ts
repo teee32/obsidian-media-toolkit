@@ -34,6 +34,16 @@ export class TrashManagementView extends ItemView {
 	}
 
 	async onOpen() {
+		// 等待 contentEl 准备好
+		let retries = 0;
+		while (!this.contentEl && retries < 10) {
+			await new Promise(resolve => setTimeout(resolve, 50));
+			retries++;
+		}
+		if (!this.contentEl) {
+			console.error('TrashManagementView: contentEl not ready');
+			return;
+		}
 		this.contentEl.addClass('trash-management-view');
 		await this.loadTrashItems();
 	}

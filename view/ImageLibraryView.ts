@@ -45,6 +45,16 @@ export class ImageLibraryView extends ItemView {
 	}
 
 	async onOpen() {
+		// 等待 contentEl 准备好（ItemView 的 contentEl 需要 Obsidian 初始化）
+		let retries = 0;
+		while (!this.contentEl && retries < 10) {
+			await new Promise(resolve => setTimeout(resolve, 50));
+			retries++;
+		}
+		if (!this.contentEl) {
+			console.error('ImageLibraryView: contentEl not ready after retries');
+			return;
+		}
 		this.contentEl.addClass('image-library-view');
 		// 从设置中读取 pageSize
 		this.pageSize = this.plugin.settings.pageSize || 50;
