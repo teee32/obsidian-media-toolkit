@@ -19,14 +19,14 @@
 - 多选和批量操作
 - 点击预览
 
-![Media Library](./assets/media-library.png)
+![Unreferenced Media](./assets/unreferenced-media.png)
 
 #### 未引用媒体检测
 - 自动检测 Vault 中未被任何笔记引用的孤立媒体文件
 - 安全删除（先移入隔离文件夹）
 - 支持批量删除
 
-![Unreferenced Media](./assets/unreferenced-media.png)
+![Media Library](./assets/media-library.png)
 
 #### 图片对齐
 支持使用简洁的语法对图片对齐：
@@ -139,14 +139,14 @@ A powerful Obsidian media management plugin that helps you better manage and org
 - Multi-select and batch operations
 - Click to preview
 
-![Media Library](./assets/media-library.png)
+![Unreferenced Media](./assets/unreferenced-media.png)
 
 #### Unreferenced Media Detection
 - Automatically detect orphaned media files not referenced by any notes
 - Safe deletion (moved to quarantine folder first)
 - Support for batch deletion
 
-![Unreferenced Media](./assets/unreferenced-media.png)
+![Media Library](./assets/media-library.png)
 
 #### Image Alignment
 Align images using simple syntax:
