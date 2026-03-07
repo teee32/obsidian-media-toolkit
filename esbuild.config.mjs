@@ -1,6 +1,6 @@
 import esbuild from 'esbuild';
 
-const isProd = process.env.NODE_ENV === 'production';
+const isProd = process.env.NODE_ENV === 'production' || process.argv.includes('--production');
 
 esbuild.build({
   entryPoints: ['main.ts'],

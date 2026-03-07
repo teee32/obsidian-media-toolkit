@@ -1,6 +1,7 @@
 import { TFile, ItemView, WorkspaceLeaf, setIcon, Menu, MenuItem, Notice } from 'obsidian';
 import ImageManagerPlugin from '../main';
 import { formatFileSize, debounce } from '../utils/format';
+import { normalizeVaultPath } from '../utils/path';
 
 export const VIEW_TYPE_IMAGE_LIBRARY = 'image-library-view';
 
@@ -107,10 +108,12 @@ export class ImageLibraryView extends ItemView {
 		// 过滤图片文件夹（如果设置了）
 		let filteredImages: TFile[];
 		if (this.plugin.settings.imageFolder) {
-			const folder = this.plugin.settings.imageFolder;
-			// 添加空字符串检查，避免 prefix 变成 /
-			const prefix = folder.endsWith('/') ? folder : folder + '/';
-			filteredImages = imageFiles.filter(f => f.path.startsWith(prefix) || f.path === folder);
+			const folder = normalizeVaultPath(this.plugin.settings.imageFolder);
+			const prefix = folder ? `${folder}/` : '';
+			filteredImages = imageFiles.filter(f => {
+				const normalizedPath = normalizeVaultPath(f.path);
+				return normalizedPath === folder || (prefix ? normalizedPath.startsWith(prefix) : false);
+			});
 		} else {
 			filteredImages = imageFiles;
 		}
@@ -534,13 +537,12 @@ export class ImageLibraryView extends ItemView {
 			item.setTitle(this.plugin.t('copyPath'))
 				.setIcon('link')
 				.onClick(() => {
-					try {
-						navigator.clipboard.writeText(file.path);
+					void navigator.clipboard.writeText(file.path).then(() => {
 						new Notice(this.plugin.t('pathCopied'));
-					} catch (error) {
+					}).catch((error) => {
 						console.error('复制到剪贴板失败:', error);
 						new Notice(this.plugin.t('error'));
-					}
+					});
 				});
 		});
 
@@ -548,14 +550,13 @@ export class ImageLibraryView extends ItemView {
 			item.setTitle(this.plugin.t('copyLink'))
 				.setIcon('copy')
 				.onClick(() => {
-					try {
-						const link = `[[${file.name}]]`;
-						navigator.clipboard.writeText(link);
+					const link = `[[${file.name}]]`;
+					void navigator.clipboard.writeText(link).then(() => {
 						new Notice(this.plugin.t('linkCopied'));
-					} catch (error) {
+					}).catch((error) => {
 						console.error('复制到剪贴板失败:', error);
 						new Notice(this.plugin.t('error'));
-					}
+					});
 				});
 		});
 

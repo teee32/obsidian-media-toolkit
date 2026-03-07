@@ -202,13 +202,12 @@ export class UnreferencedImagesView extends ItemView {
 		const copyBtn = actions.createEl('button', { cls: 'item-button' });
 		setIcon(copyBtn, 'link');
 		copyBtn.addEventListener('click', () => {
-			try {
-				navigator.clipboard.writeText(image.path);
+			void navigator.clipboard.writeText(image.path).then(() => {
 				new Notice(this.plugin.t('pathCopied'));
-			} catch (error) {
+			}).catch((error) => {
 				console.error('复制到剪贴板失败:', error);
 				new Notice(this.plugin.t('error'));
-			}
+			});
 		});
 
 		// 删除按钮
@@ -240,13 +239,12 @@ export class UnreferencedImagesView extends ItemView {
 			item.setTitle(this.plugin.t('copyPath'))
 				.setIcon('link')
 				.onClick(() => {
-					try {
-						navigator.clipboard.writeText(file.path);
+					void navigator.clipboard.writeText(file.path).then(() => {
 						new Notice(this.plugin.t('pathCopied'));
-					} catch (error) {
+					}).catch((error) => {
 						console.error('复制到剪贴板失败:', error);
 						new Notice(this.plugin.t('error'));
-					}
+					});
 				});
 		});
 
@@ -254,14 +252,13 @@ export class UnreferencedImagesView extends ItemView {
 			item.setTitle(this.plugin.t('copyLink'))
 				.setIcon('copy')
 				.onClick(() => {
-					try {
-						const link = `[[${file.name}]]`;
-						navigator.clipboard.writeText(link);
+					const link = `[[${file.name}]]`;
+					void navigator.clipboard.writeText(link).then(() => {
 						new Notice(this.plugin.t('linkCopied'));
-					} catch (error) {
+					}).catch((error) => {
 						console.error('复制到剪贴板失败:', error);
 						new Notice(this.plugin.t('error'));
-					}
+					});
 				});
 		});
 
@@ -343,13 +340,12 @@ export class UnreferencedImagesView extends ItemView {
 
 	copyAllPaths() {
 		const paths = this.unreferencedImages.map(img => img.path).join('\n');
-		try {
-			navigator.clipboard.writeText(paths);
+		void navigator.clipboard.writeText(paths).then(() => {
 			new Notice(this.plugin.t('copiedFilePaths').replace('{count}', String(this.unreferencedImages.length)));
-		} catch (error) {
+		}).catch((error) => {
 			console.error('复制到剪贴板失败:', error);
 			new Notice(this.plugin.t('error'));
-		}
+		});
 	}
 
 	// 已移除 formatFileSize 方法，使用 utils/format.ts 中的实现

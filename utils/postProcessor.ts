@@ -2,6 +2,7 @@ import { MarkdownPostProcessorContext, TFile } from 'obsidian';
 import ImageManagerPlugin from '../main';
 import { AlignmentType } from './imageAlignment';
 import { isSafeUrl, isPathSafe } from './security';
+import { normalizeVaultPath } from './path';
 
 /**
  * 图片对齐 PostProcessor
@@ -132,12 +133,13 @@ export class AlignmentPostProcessor {
 			imgEl.alt = img.alt;
 
 			if (!img.src.startsWith('http')) {
-				if (!isPathSafe(img.src)) continue;
-				const file = this.plugin.app.vault.getAbstractFileByPath(img.src);
+				const normalizedSrc = normalizeVaultPath(img.src);
+				if (!isPathSafe(normalizedSrc)) continue;
+				const file = this.plugin.app.vault.getAbstractFileByPath(normalizedSrc);
 				if (file && file instanceof TFile) {
 					imgEl.src = this.plugin.app.vault.getResourcePath(file);
 				} else {
-					const attachmentsPath = this.findFileInVault(img.src);
+					const attachmentsPath = this.findFileInVault(normalizedSrc);
 					if (attachmentsPath) {
 						imgEl.src = attachmentsPath;
 					} else {
@@ -158,9 +160,10 @@ export class AlignmentPostProcessor {
 	 * 在 Vault 中查找文件
 	 */
 	private findFileInVault(fileName: string): string | null {
+		const normalizedFileName = normalizeVaultPath(fileName);
 		const files = this.plugin.app.vault.getFiles();
 		for (const file of files) {
-			if (file.name === fileName || file.path.endsWith(fileName)) {
+			if (file.name === normalizedFileName || file.path.endsWith(normalizedFileName)) {
 				return this.plugin.app.vault.getResourcePath(file);
 			}
 		}

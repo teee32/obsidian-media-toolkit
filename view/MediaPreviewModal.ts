@@ -143,27 +143,25 @@ export class MediaPreviewModal extends Modal {
 		const copyPathBtn = actions.createEl('button');
 		copyPathBtn.textContent = this.plugin.t('copyPathBtn');
 		copyPathBtn.addEventListener('click', () => {
-			try {
-				navigator.clipboard.writeText(file.path);
+			void navigator.clipboard.writeText(file.path).then(() => {
 				new Notice(this.plugin.t('pathCopied'));
-			} catch (error) {
+			}).catch((error) => {
 				console.error('复制到剪贴板失败:', error);
 				new Notice(this.plugin.t('error'));
-			}
+			});
 		});
 
 		// 复制链接
 		const copyLinkBtn = actions.createEl('button');
 		copyLinkBtn.textContent = this.plugin.t('copyLinkBtn');
 		copyLinkBtn.addEventListener('click', () => {
-			try {
-				const link = `[[${file.name}]]`;
-				navigator.clipboard.writeText(link);
+			const link = `[[${file.name}]]`;
+			void navigator.clipboard.writeText(link).then(() => {
 				new Notice(this.plugin.t('linkCopied'));
-			} catch (error) {
+			}).catch((error) => {
 				console.error('复制到剪贴板失败:', error);
 				new Notice(this.plugin.t('error'));
-			}
+			});
 		});
 
 		// 在笔记中查找

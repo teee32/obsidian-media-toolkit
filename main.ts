@@ -9,6 +9,7 @@ import { AlignmentPostProcessor } from './utils/postProcessor';
 import { t as translate, getSystemLanguage, Language, Translations } from './utils/i18n';
 import { getEnabledExtensions } from './utils/mediaTypes';
 import { isPathSafe } from './utils/security';
+import { getFileNameFromPath, normalizeVaultPath, safeDecodeURIComponent } from './utils/path';
 
 export default class ImageManagerPlugin extends Plugin {
 	settings: ImageManagerSettings = DEFAULT_SETTINGS;
@@ -146,9 +147,9 @@ export default class ImageManagerPlugin extends Plugin {
 	 */
 	async cleanupOldTrashFiles(): Promise<number> {
 		const { vault } = this.app;
-		const trashPath = this.settings.trashFolder;
+		const trashPath = normalizeVaultPath(this.settings.trashFolder);
 
-		if (!isPathSafe(trashPath)) {
+		if (!trashPath || !isPathSafe(trashPath)) {
 			return 0;
 		}
 
@@ -248,6 +249,11 @@ export default class ImageManagerPlugin extends Plugin {
 	 * 打开媒体预览
 	 */
 	openMediaPreview(file: TFile) {
+		if (!this.settings.enablePreviewModal) {
+			const src = this.app.vault.getResourcePath(file);
+			window.open(src, '_blank', 'noopener,noreferrer');
+			return;
+		}
 		new MediaPreviewModal(this.app, this, file).open();
 	}
 
@@ -1040,17 +1046,47 @@ export default class ImageManagerPlugin extends Plugin {
 					)
 				)
 				: {};
-			const merged = Object.assign({}, DEFAULT_SETTINGS, sanitized);
-			merged.trashCleanupDays = Math.max(1, Math.min(365, Number(merged.trashCleanupDays) || 30));
-			merged.pageSize = Math.max(1, Math.min(1000, Number(merged.pageSize) || 50));
-			if (!['small', 'medium', 'large'].includes(merged.thumbnailSize)) {
-				merged.thumbnailSize = 'medium';
-			}
-			// 语言设置类型验证
-			if (!['zh', 'en', 'system'].includes(merged.language)) {
-				merged.language = 'system';
-			}
-			this.settings = merged;
+			const merged = Object.assign({}, DEFAULT_SETTINGS, sanitized) as Partial<ImageManagerSettings> & Record<string, unknown>;
+			const toBool = (value: unknown, fallback: boolean): boolean =>
+				typeof value === 'boolean' ? value : fallback;
+
+			const imageFolder = normalizeVaultPath(typeof merged.imageFolder === 'string' ? merged.imageFolder : '');
+			const trashFolderRaw = typeof merged.trashFolder === 'string' ? merged.trashFolder : DEFAULT_SETTINGS.trashFolder;
+			const trashFolder = normalizeVaultPath(trashFolderRaw) || DEFAULT_SETTINGS.trashFolder;
+
+			this.settings = {
+				...DEFAULT_SETTINGS,
+				...merged,
+				imageFolder,
+				trashFolder,
+				thumbnailSize: ['small', 'medium', 'large'].includes(String(merged.thumbnailSize))
+					? merged.thumbnailSize as 'small' | 'medium' | 'large'
+					: DEFAULT_SETTINGS.thumbnailSize,
+				sortBy: ['name', 'date', 'size'].includes(String(merged.sortBy))
+					? merged.sortBy as 'name' | 'date' | 'size'
+					: DEFAULT_SETTINGS.sortBy,
+				sortOrder: ['asc', 'desc'].includes(String(merged.sortOrder))
+					? merged.sortOrder as 'asc' | 'desc'
+					: DEFAULT_SETTINGS.sortOrder,
+				defaultAlignment: ['left', 'center', 'right'].includes(String(merged.defaultAlignment))
+					? merged.defaultAlignment as 'left' | 'center' | 'right'
+					: DEFAULT_SETTINGS.defaultAlignment,
+				language: ['zh', 'en', 'system'].includes(String(merged.language))
+					? merged.language as 'zh' | 'en' | 'system'
+					: 'system',
+				trashCleanupDays: Math.max(1, Math.min(365, Number(merged.trashCleanupDays) || DEFAULT_SETTINGS.trashCleanupDays)),
+				pageSize: Math.max(1, Math.min(1000, Number(merged.pageSize) || DEFAULT_SETTINGS.pageSize)),
+				showImageInfo: toBool(merged.showImageInfo, DEFAULT_SETTINGS.showImageInfo),
+				autoRefresh: toBool(merged.autoRefresh, DEFAULT_SETTINGS.autoRefresh),
+				useTrashFolder: toBool(merged.useTrashFolder, DEFAULT_SETTINGS.useTrashFolder),
+				autoCleanupTrash: toBool(merged.autoCleanupTrash, DEFAULT_SETTINGS.autoCleanupTrash),
+				enableImages: toBool(merged.enableImages, DEFAULT_SETTINGS.enableImages),
+				enableVideos: toBool(merged.enableVideos, DEFAULT_SETTINGS.enableVideos),
+				enableAudio: toBool(merged.enableAudio, DEFAULT_SETTINGS.enableAudio),
+				enablePDF: toBool(merged.enablePDF, DEFAULT_SETTINGS.enablePDF),
+				enablePreviewModal: toBool(merged.enablePreviewModal, DEFAULT_SETTINGS.enablePreviewModal),
+				enableKeyboardNav: toBool(merged.enableKeyboardNav, DEFAULT_SETTINGS.enableKeyboardNav)
+			};
 		} catch (error) {
 			console.error('加载设置失败，使用默认设置:', error);
 			this.settings = { ...DEFAULT_SETTINGS };
@@ -1058,6 +1094,8 @@ export default class ImageManagerPlugin extends Plugin {
 	}
 
 	async saveSettings() {
+		this.settings.imageFolder = normalizeVaultPath(this.settings.imageFolder);
+		this.settings.trashFolder = normalizeVaultPath(this.settings.trashFolder) || DEFAULT_SETTINGS.trashFolder;
 		await this.saveData(this.settings);
 	}
 
@@ -1141,6 +1179,54 @@ export default class ImageManagerPlugin extends Plugin {
 
 		const referenced = new Set<string>();
 		const { vault } = this.app;
+		const enabledExtensions = getEnabledExtensions({
+			enableImages: this.settings.enableImages,
+			enableVideos: this.settings.enableVideos,
+			enableAudio: this.settings.enableAudio,
+			enablePDF: this.settings.enablePDF
+		});
+		const extensionPattern = enabledExtensions.map(ext => ext.slice(1)).join('|');
+
+		if (!extensionPattern) {
+			this.referencedImagesCache = referenced;
+			this.cacheTimestamp = now;
+			return referenced;
+		}
+
+		const wikiLinkPatternSource = `\\[\\[([^\\]|]+\\.(?:${extensionPattern}))(?:\\|[^\\]]*)?\\]\\]`;
+		const markdownLinkPatternSource = `!?\\[[^\\]]*\\]\\(([^)]+\\.(?:${extensionPattern})(?:\\?[^)#]*)?(?:#[^)]+)?)\\)`;
+		const addReferencedPath = (rawPath: string, sourceFilePath: string) => {
+			if (!rawPath) return;
+
+			let candidate = rawPath.trim();
+			if (candidate.startsWith('<') && candidate.endsWith('>')) {
+				candidate = candidate.slice(1, -1).trim();
+			}
+
+			candidate = candidate.replace(/\\ /g, ' ');
+			candidate = safeDecodeURIComponent(candidate);
+
+			if (/^[a-z][a-z0-9+.-]*:/i.test(candidate)) {
+				return;
+			}
+
+			const [withoutQuery] = candidate.split(/[?#]/);
+			const normalizedCandidate = normalizeVaultPath(withoutQuery);
+			const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(
+				normalizedCandidate || withoutQuery,
+				sourceFilePath
+			);
+			const normalized = resolvedFile
+				? normalizeVaultPath(resolvedFile.path).toLowerCase()
+				: normalizedCandidate.toLowerCase();
+
+			if (!normalized) return;
+			referenced.add(normalized);
+			const fileName = getFileNameFromPath(normalized);
+			if (fileName) {
+				referenced.add(fileName.toLowerCase());
+			}
+		};
 
 		// 使用正则扫描所有 Markdown 文件
 		const markdownFiles = vault.getFiles().filter(f => f.extension === 'md');
@@ -1204,48 +1290,18 @@ export default class ImageManagerPlugin extends Plugin {
 					return;
 				}
 
-				// 根据设置动态获取启用的媒体扩展名
-				const enabledExtensions = getEnabledExtensions({
-					enableImages: this.settings.enableImages,
-					enableVideos: this.settings.enableVideos,
-					enableAudio: this.settings.enableAudio,
-					enablePDF: this.settings.enablePDF
-				});
-
-				// 将扩展名格式化为正则表达式所需的格式（去掉前导点号）
-				const extensionPattern = enabledExtensions.map(ext => ext.slice(1)).join('|');
-
-				// 如果没有启用任何媒体类型，返回空结果
-				if (!extensionPattern) {
-					return referenced;
-				}
-
-				// 匹配各种链接格式
-				// [[filename.png]] 或 [[path/to/filename.png]] 或 [[filename.png|alias]]
-				const wikiLinkPattern = new RegExp(`\\[\\[([^\\]|]+\\.(?:${extensionPattern}))(?:\\|[^\\]]*)?\\]\\]`, 'gi');
-				// ![alt](path/to/image.png)
-				const markdownLinkPattern = new RegExp(`!\\[.*?\\]\\(([^)]+\\.(?:${extensionPattern}))\\)`, 'gi');
-
+				const wikiLinkPattern = new RegExp(wikiLinkPatternSource, 'gi');
+				const markdownLinkPattern = new RegExp(markdownLinkPatternSource, 'gi');
 				let match;
 
 				// 匹配 Wiki 链接（含带别名的）
 				while ((match = wikiLinkPattern.exec(content)) !== null) {
-					const path = match[1].toLowerCase();
-					referenced.add(path);
-					const fileName = path.split('/').pop() || path;
-					referenced.add(fileName);
+					addReferencedPath(match[1], file.path);
 				}
 
-				// 匹配 Markdown 图片链接
+				// 匹配 Markdown 链接（图片/音视频/PDF）
 				while ((match = markdownLinkPattern.exec(content)) !== null) {
-					const url = match[1];
-					// 只处理相对路径或仓库内文件
-					if (!url.startsWith('http')) {
-						const filename = url.split('/').pop()?.toLowerCase() || '';
-						referenced.add(filename);
-						// 也添加完整路径
-						referenced.add(url.toLowerCase());
-					}
+					addReferencedPath(match[1], file.path);
 				}
 			}));
 
@@ -1284,7 +1340,9 @@ export default class ImageManagerPlugin extends Plugin {
 		const referenced = await this.getReferencedImages();
 
 		return allImages.filter(file => {
-			return !referenced.has(file.name.toLowerCase());
+			const fileName = file.name.toLowerCase();
+			const filePath = normalizeVaultPath(file.path).toLowerCase();
+			return !referenced.has(fileName) && !referenced.has(filePath);
 		});
 	}
 
@@ -1310,7 +1368,12 @@ export default class ImageManagerPlugin extends Plugin {
 		const markdownFiles = vault.getFiles().filter(f => f.extension === 'md');
 
 		for (const file of markdownFiles) {
-			const content = await vault.read(file);
+			let content: string;
+			try {
+				content = await vault.read(file);
+			} catch {
+				continue;
+			}
 			const lines = content.split('\n');
 
 			for (let i = 0; i < lines.length; i++) {
@@ -1422,7 +1485,7 @@ export default class ImageManagerPlugin extends Plugin {
 
 		// 移动到隔离文件夹
 		// 使用双下划线 __ 作为分隔符，避免文件名中包含下划线时解析错误
-		const trashPath = this.settings.trashFolder;
+		const trashPath = normalizeVaultPath(this.settings.trashFolder) || DEFAULT_SETTINGS.trashFolder;
 
 		if (!isPathSafe(trashPath)) {
 			new Notice(this.t('operationFailed', { name: file.name }));
@@ -1431,7 +1494,8 @@ export default class ImageManagerPlugin extends Plugin {
 
 		const fileName = file.name;
 		const timestamp = Date.now();
-		const newFileName = `${timestamp}__${fileName}`;
+		const encodedOriginalPath = encodeURIComponent(normalizeVaultPath(file.path) || file.name);
+		const newFileName = `${timestamp}__${encodedOriginalPath}`;
 		const targetPath = `${trashPath}/${newFileName}`;
 
 		try {
@@ -1447,30 +1511,23 @@ export default class ImageManagerPlugin extends Plugin {
 			return true;
 		} catch (error) {
 			console.error('移动文件到隔离文件夹失败:', error);
-			// 如果移动失败，尝试直接删除
-			try {
-				await vault.delete(file);
-				new Notice(this.t('deletedWithQuarantineFailed', { name: fileName }));
-				return true;
-			} catch (deleteError) {
-				console.error('删除文件失败:', deleteError);
-				new Notice(this.t('operationFailed', { name: fileName }));
-				return false;
-			}
+			new Notice(this.t('operationFailed', { name: fileName }));
+			return false;
 		}
 	}
 
 	// 恢复隔离文件夹中的文件
 	async restoreFile(file: TFile, originalPath: string): Promise<boolean> {
 		const { vault } = this.app;
+		const normalizedOriginalPath = normalizeVaultPath(safeDecodeURIComponent(originalPath));
 
-		if (!isPathSafe(originalPath)) {
+		if (!normalizedOriginalPath || !isPathSafe(normalizedOriginalPath)) {
 			new Notice(this.t('restoreFailed'));
 			return false;
 		}
 
 		try {
-			await vault.rename(file, originalPath);
+			await vault.rename(file, normalizedOriginalPath);
 			new Notice(this.t('restoreSuccess', { name: file.name }));
 			return true;
 		} catch (error) {

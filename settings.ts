@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting, DropdownComponent } from 'obsidian';
 import ImageManagerPlugin from './main';
 import { Translations } from './utils/i18n';
+import { normalizeVaultPath } from './utils/path';
 
 export interface ImageManagerSettings {
 	imageFolder: string;
@@ -78,7 +79,7 @@ export class SettingsTab extends PluginSettingTab {
 				.setPlaceholder('attachments/media')
 				.setValue(this.plugin.settings.imageFolder)
 				.onChange(async (value) => {
-					this.plugin.settings.imageFolder = value;
+					this.plugin.settings.imageFolder = normalizeVaultPath(value);
 					this.plugin.clearCache();
 					await this.plugin.saveSettings();
 				}));
@@ -185,7 +186,7 @@ export class SettingsTab extends PluginSettingTab {
 				.setPlaceholder('.obsidian-media-toolkit-trash')
 				.setValue(this.plugin.settings.trashFolder)
 				.onChange(async (value) => {
-					this.plugin.settings.trashFolder = value;
+					this.plugin.settings.trashFolder = normalizeVaultPath(value);
 					await this.plugin.saveSettings();
 				}));
 

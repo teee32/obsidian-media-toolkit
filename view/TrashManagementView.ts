@@ -3,12 +3,14 @@ import ImageManagerPlugin from '../main';
 import { formatFileSize } from '../utils/format';
 import { getMediaType } from '../utils/mediaTypes';
 import { isPathSafe } from '../utils/security';
+import { getFileNameFromPath, getParentPath, normalizeVaultPath, safeDecodeURIComponent } from '../utils/path';
 
 export const VIEW_TYPE_TRASH_MANAGEMENT = 'trash-management-view';
 
 interface TrashItem {
 	file: TFile;
 	path: string;
+	rawName: string;
 	name: string;
 	size: number;
 	modified: number;
@@ -71,9 +73,9 @@ export class TrashManagementView extends ItemView {
 		loading.createDiv({ text: this.plugin.t('loadingTrashFiles') });
 
 		try {
-			const trashPath = this.plugin.settings.trashFolder;
+			const trashPath = normalizeVaultPath(this.plugin.settings.trashFolder);
 
-			if (!isPathSafe(trashPath)) {
+			if (!trashPath || !isPathSafe(trashPath)) {
 				this.trashItems = [];
 				await this.renderView();
 				return;
@@ -91,19 +93,14 @@ export class TrashManagementView extends ItemView {
 			this.trashItems = [];
 			for (const file of trashFolder.children) {
 				if (file instanceof TFile) {
-					// 从文件名中提取原始路径（格式：timestamp__originalPath）
-					// 使用 lastIndexOf 查找最后一个双下划线，避免文件名本身包含 __ 时解析错误
-					let originalPath: string | undefined;
-					const separatorIndex = file.name.lastIndexOf('__');
-					if (separatorIndex !== -1) {
-						// 去掉时间戳部分，剩余的就是原始路径
-						originalPath = file.name.substring(separatorIndex + 2);
-					}
+					const originalPath = this.extractOriginalPath(file.name);
+					const displayName = originalPath ? getFileNameFromPath(originalPath) || file.name : file.name;
 
 					this.trashItems.push({
 						file,
 						path: file.path,
-						name: file.name,
+						rawName: file.name,
+						name: displayName,
 						size: file.stat.size,
 						modified: file.stat.mtime,
 						originalPath
@@ -121,9 +118,29 @@ export class TrashManagementView extends ItemView {
 				cls: 'error-state',
 				text: this.plugin.t('error')
 			});
+		} finally {
+			this.isLoading = false;
+		}
+	}
+
+	/**
+	 * 从隔离文件名中提取原始路径
+	 * 新格式: timestamp__encodeURIComponent(originalPath)
+	 * 旧格式: timestamp__filename.ext
+	 */
+	private extractOriginalPath(fileName: string): string | undefined {
+		const separatorIndex = fileName.indexOf('__');
+		if (separatorIndex === -1) {
+			return undefined;
 		}
 
-		this.isLoading = false;
+		const encodedPart = fileName.substring(separatorIndex + 2);
+		if (!encodedPart) {
+			return undefined;
+		}
+
+		const decoded = normalizeVaultPath(safeDecodeURIComponent(encodedPart));
+		return decoded || undefined;
 	}
 
 	/**
@@ -262,13 +279,12 @@ export class TrashManagementView extends ItemView {
 			menuItem.setTitle(this.plugin.t('copiedFileName'))
 				.setIcon('copy')
 				.onClick(() => {
-					try {
-						navigator.clipboard.writeText(trashItem.name);
+					void navigator.clipboard.writeText(trashItem.name).then(() => {
 						new Notice(this.plugin.t('fileNameCopied'));
-					} catch (error) {
+					}).catch((error) => {
 						console.error('复制到剪贴板失败:', error);
 						new Notice(this.plugin.t('error'));
-					}
+					});
 				});
 		});
 
@@ -277,13 +293,12 @@ export class TrashManagementView extends ItemView {
 				.setIcon('link')
 				.onClick(() => {
 					if (trashItem.originalPath) {
-						try {
-							navigator.clipboard.writeText(trashItem.originalPath);
+						void navigator.clipboard.writeText(trashItem.originalPath).then(() => {
 							new Notice(this.plugin.t('originalPathCopied'));
-						} catch (error) {
+						}).catch((error) => {
 							console.error('复制到剪贴板失败:', error);
 							new Notice(this.plugin.t('error'));
-						}
+						});
 					}
 				});
 		});
@@ -298,15 +313,17 @@ export class TrashManagementView extends ItemView {
 		try {
 			// 如果 originalPath 存在，使用它
 			// 如果 originalPath 为空，说明文件名没有被修改（不含时间戳前缀），应该使用原文件名
-			let targetPath = item.originalPath;
+			let targetPath = normalizeVaultPath(item.originalPath || '');
 			if (!targetPath) {
-				// 从 item.name 中提取原始文件名（去掉时间戳前缀）
-				const separatorIndex = item.name.lastIndexOf('__');
+				// 从隔离文件名中提取原始文件名（去掉时间戳前缀）
+				const separatorIndex = item.rawName.indexOf('__');
 				if (separatorIndex !== -1) {
-					targetPath = item.name.substring(separatorIndex + 2);
+					targetPath = normalizeVaultPath(
+						safeDecodeURIComponent(item.rawName.substring(separatorIndex + 2))
+					);
 				} else {
 					// 完全没有时间戳前缀，直接使用原文件名
-					targetPath = item.name;
+					targetPath = normalizeVaultPath(item.rawName);
 				}
 			}
 
@@ -323,7 +340,7 @@ export class TrashManagementView extends ItemView {
 			}
 
 			// 检查父目录是否存在
-			const parentPath = targetPath.substring(0, targetPath.lastIndexOf('/'));
+			const parentPath = getParentPath(targetPath);
 			if (parentPath) {
 				const parentFolder = this.plugin.app.vault.getAbstractFileByPath(parentPath);
 				if (!parentFolder) {

@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.3] - 2026-03-07
+
+### Fixed
+- 修复 Windows 路径兼容问题：统一规范化路径分隔符，解决媒体库过滤、隔离目录加载/恢复、引用扫描异常
+- 修复未引用检测误判：同时按文件名和规范化路径匹配，并使用 metadataCache 解析相对链接
+- 修复隔离文件恢复逻辑：隔离文件名保存编码后的原始路径，兼容旧格式解析
+- 修复隔离管理视图加载状态卡住问题（isLoading 未释放）
+- 修复剪贴板错误处理：改为 Promise 异步捕获，避免未处理异常
+- 修复 openImageInNotes 在读取单个 Markdown 文件失败时中断流程
+- 修复 enablePreviewModal 设置未生效的问题
+- 修复 build:release 在 Windows 下无法执行的问题（去除 Unix 风格环境变量写法）
+
+### Changed
+- 强化设置加载校验与类型兜底（布尔、枚举、数值范围）
+- 安全删除策略调整：移动到隔离目录失败时不再自动永久删除源文件
+
+---
+
 ## [1.1.2] - 2026-03-06
 
 ### Security
