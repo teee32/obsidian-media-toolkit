@@ -3,7 +3,7 @@ import ImageManagerPlugin from '../main';
 import { formatFileSize } from '../utils/format';
 import { getMediaType } from '../utils/mediaTypes';
 import { isPathSafe } from '../utils/security';
-import { getFileNameFromPath, getParentPath, normalizeVaultPath, safeDecodeURIComponent } from '../utils/path';
+import { getFileNameFromPath, normalizeVaultPath, safeDecodeURIComponent } from '../utils/path';
 
 export const VIEW_TYPE_TRASH_MANAGEMENT = 'trash-management-view';
 
@@ -327,34 +327,15 @@ export class TrashManagementView extends ItemView {
 				}
 			}
 
-			if (!isPathSafe(targetPath)) {
-				new Notice(this.plugin.t('restoreFailed').replace('{message}', 'Invalid path'));
+			if (!targetPath) {
+				new Notice(this.plugin.t('restoreFailed').replace('{message}', this.plugin.t('error')));
 				return;
 			}
 
-			// 检查目标路径是否已存在同名文件
-			const targetFile = this.plugin.app.vault.getAbstractFileByPath(targetPath);
-			if (targetFile) {
-				new Notice(this.plugin.t('restoreFailed').replace('{message}', this.plugin.t('targetFileExists')));
+			const restored = await this.plugin.restoreFile(item.file, targetPath);
+			if (!restored) {
 				return;
 			}
-
-			// 检查父目录是否存在
-			const parentPath = getParentPath(targetPath);
-			if (parentPath) {
-				const parentFolder = this.plugin.app.vault.getAbstractFileByPath(parentPath);
-				if (!parentFolder) {
-					new Notice(this.plugin.t('restoreFailed').replace('{message}', 'Parent directory does not exist'));
-					return;
-				}
-				if (!(parentFolder instanceof TFolder)) {
-					new Notice(this.plugin.t('restoreFailed').replace('{message}', 'Parent path is not a directory'));
-					return;
-				}
-			}
-
-			await this.plugin.app.vault.rename(item.file, targetPath);
-			new Notice(this.plugin.t('restoreSuccess').replace('{name}', item.name));
 
 			// 从列表中移除
 			this.trashItems = this.trashItems.filter(i => i.file.path !== item.file.path);

@@ -36,7 +36,7 @@ export const DEFAULT_SETTINGS: ImageManagerSettings = {
 	autoRefresh: true,
 	defaultAlignment: 'center',
 	useTrashFolder: true,
-	trashFolder: '.obsidian-media-toolkit-trash',
+	trashFolder: 'obsidian-media-toolkit-trash',
 	autoCleanupTrash: false,
 	trashCleanupDays: 30,
 	// 新增默认值
@@ -183,7 +183,7 @@ export class SettingsTab extends PluginSettingTab {
 			.setName(this.t('trashFolderPath'))
 			.setDesc(this.t('trashFolderPathDesc'))
 			.addText(text => text
-				.setPlaceholder('.obsidian-media-toolkit-trash')
+				.setPlaceholder('obsidian-media-toolkit-trash')
 				.setValue(this.plugin.settings.trashFolder)
 				.onChange(async (value) => {
 					this.plugin.settings.trashFolder = normalizeVaultPath(value);

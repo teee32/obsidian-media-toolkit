@@ -2,6 +2,7 @@ import { TFile, ItemView, WorkspaceLeaf, setIcon, Menu, MenuItem, Notice } from 
 import ImageManagerPlugin from '../main';
 import { formatFileSize, debounce } from '../utils/format';
 import { normalizeVaultPath } from '../utils/path';
+import { getMediaType } from '../utils/mediaTypes';
 
 export const VIEW_TYPE_IMAGE_LIBRARY = 'image-library-view';
 
@@ -24,17 +25,10 @@ export class ImageLibraryView extends ItemView {
 	private selectedFiles: Set<string> = new Set();
 	private isSelectionMode: boolean = false;
 	private searchInput: HTMLInputElement | null = null;
-	private settingsChangeCallback: () => void = () => {};
 
 	constructor(leaf: WorkspaceLeaf, plugin: ImageManagerPlugin) {
 		super(leaf);
 		this.plugin = plugin;
-
-		// 创建设置变更回调
-		this.settingsChangeCallback = () => {
-			// 设置变更时自动刷新视图
-			this.onSettingsChanged();
-		};
 	}
 
 	getViewType() {
@@ -60,31 +54,10 @@ export class ImageLibraryView extends ItemView {
 		// 从设置中读取 pageSize
 		this.pageSize = this.plugin.settings.pageSize || 50;
 		await this.refreshImages();
-
-		// 注册设置变更监听
-		// @ts-ignore - setting-changed event
-		this.registerEvent(this.app.workspace.on('setting-changed', this.settingsChangeCallback));
 	}
 
 	async onClose() {
 		// 清理工作 - 事件监听会在 View 卸载时自动清理
-	}
-
-	/**
-	 * 设置变更处理
-	 */
-	private async onSettingsChanged() {
-		// 重新读取 pageSize
-		this.pageSize = this.plugin.settings.pageSize || 50;
-
-		// 如果当前页码超出范围，重置到第一页
-		const totalPages = Math.ceil(this.filteredImages.length / this.pageSize);
-		if (this.currentPage > totalPages && totalPages > 0) {
-			this.currentPage = 1;
-		}
-
-		// 刷新视图
-		await this.refreshImages();
 	}
 
 	async refreshImages() {
@@ -92,6 +65,9 @@ export class ImageLibraryView extends ItemView {
 		if (!this.contentEl) {
 			return;
 		}
+
+		// 同步最新分页设置，保证设置变更后立即生效
+		this.pageSize = Math.max(1, this.plugin.settings.pageSize || 50);
 
 		const sizeMap: Record<string, 'small' | 'medium' | 'large'> = {
 			'small': 'small',
@@ -131,6 +107,12 @@ export class ImageLibraryView extends ItemView {
 
 		// 应用搜索过滤
 		this.applySearch();
+
+		// 当数据量变化或分页大小变化时，修正当前页码
+		const totalPages = Math.max(1, Math.ceil(this.filteredImages.length / this.pageSize));
+		if (this.currentPage > totalPages) {
+			this.currentPage = totalPages;
+		}
 
 		// 创建头部（在获取数据之后渲染）
 		this.renderHeader();
@@ -181,7 +163,6 @@ export class ImageLibraryView extends ItemView {
 				img.path.toLowerCase().includes(query)
 			);
 		}
-		this.currentPage = 1;  // 重置到第一页
 	}
 
 	/**
@@ -209,6 +190,7 @@ export class ImageLibraryView extends ItemView {
 			setIcon(clearBtn, 'x');
 			clearBtn.addEventListener('click', () => {
 				this.searchQuery = '';
+				this.currentPage = 1;
 				this.applySearch();
 				this.refreshImages();
 			});
@@ -216,6 +198,7 @@ export class ImageLibraryView extends ItemView {
 
 		// 使用防抖处理搜索输入
 		const debouncedSearch = debounce(() => {
+			this.currentPage = 1;
 			this.applySearch();
 			this.refreshImages();
 		}, 300);
@@ -449,6 +432,77 @@ export class ImageLibraryView extends ItemView {
 		});
 	}
 
+	private renderThumbnailFallback(container: HTMLElement, iconName: string, label: string) {
+		container.empty();
+
+		const fallback = container.createDiv();
+		fallback.style.width = '100%';
+		fallback.style.height = '100%';
+		fallback.style.display = 'flex';
+		fallback.style.flexDirection = 'column';
+		fallback.style.alignItems = 'center';
+		fallback.style.justifyContent = 'center';
+		fallback.style.gap = '6px';
+		fallback.style.color = 'var(--text-muted)';
+
+		const iconEl = fallback.createDiv();
+		setIcon(iconEl, iconName);
+
+		const labelEl = fallback.createDiv({ text: label });
+		labelEl.style.fontSize = '0.75em';
+		labelEl.style.textTransform = 'uppercase';
+	}
+
+	private renderMediaThumbnail(container: HTMLElement, file: TFile, displayName: string) {
+		const mediaType = getMediaType(file.name);
+		const src = this.app.vault.getResourcePath(file);
+
+		if (mediaType === 'image') {
+			const img = container.createEl('img', {
+				attr: {
+					src,
+					alt: displayName
+				}
+			});
+
+			img.addEventListener('error', () => {
+				container.empty();
+				container.createDiv({
+					cls: 'image-error',
+					text: this.plugin.t('imageLoadError')
+				});
+			});
+			return;
+		}
+
+		if (mediaType === 'video') {
+			const video = container.createEl('video');
+			video.src = src;
+			video.muted = true;
+			video.preload = 'metadata';
+			video.playsInline = true;
+			video.style.width = '100%';
+			video.style.height = '100%';
+			video.style.objectFit = 'cover';
+			video.addEventListener('error', () => {
+				this.renderThumbnailFallback(container, 'video', 'VIDEO');
+			});
+			return;
+		}
+
+		if (mediaType === 'audio') {
+			this.renderThumbnailFallback(container, 'music', 'AUDIO');
+			return;
+		}
+
+		if (mediaType === 'document') {
+			this.renderThumbnailFallback(container, 'file-text', 'PDF');
+			return;
+		}
+
+		this.renderThumbnailFallback(container, 'file', 'FILE');
+	}
+
 	renderImageItem(container: HTMLElement, image: ImageItem) {
 		const item = container.createDiv({ cls: 'image-item' });
 
@@ -472,28 +526,10 @@ export class ImageLibraryView extends ItemView {
 		// 创建图片容器
 		const imgContainer = item.createDiv({ cls: 'image-container' });
 
-		// 获取文件链接
 		const file = image.file;
-		const src = this.app.vault.getResourcePath(file);
+		this.renderMediaThumbnail(imgContainer, file, image.name);
 
-		// 创建图片元素
-		const img = imgContainer.createEl('img', {
-			attr: {
-				src: src,
-				alt: image.name
-			}
-		});
-
-		// 图片加载失败时显示错误状态
-		img.addEventListener('error', () => {
-			imgContainer.empty();
-			imgContainer.createDiv({
-				cls: 'image-error',
-				text: this.plugin.t('imageLoadError')
-			});
-		});
-
-		img.addEventListener('click', () => {
+		imgContainer.addEventListener('click', () => {
 			if (this.isSelectionMode) {
 				// 在选择模式下，点击切换选择状态
 				if (this.selectedFiles.has(image.file.path)) {

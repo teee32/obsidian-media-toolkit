@@ -1,4 +1,4 @@
-import { Plugin, Editor, TFile, TFolder, MarkdownView, Notice, Menu, MenuItem, setIcon, EditorPosition, EditorSelection, Events } from 'obsidian';
+import { Plugin, Editor, TFile, TFolder, TAbstractFile, MarkdownView, Notice, Menu, MenuItem } from 'obsidian';
 import { ImageLibraryView, VIEW_TYPE_IMAGE_LIBRARY } from './view/ImageLibraryView';
 import { UnreferencedImagesView, VIEW_TYPE_UNREFERENCED_IMAGES } from './view/UnreferencedImagesView';
 import { TrashManagementView, VIEW_TYPE_TRASH_MANAGEMENT } from './view/TrashManagementView';
@@ -7,16 +7,18 @@ import { ImageManagerSettings, DEFAULT_SETTINGS, SettingsTab } from './settings'
 import { ImageAlignment, AlignmentType } from './utils/imageAlignment';
 import { AlignmentPostProcessor } from './utils/postProcessor';
 import { t as translate, getSystemLanguage, Language, Translations } from './utils/i18n';
-import { getEnabledExtensions } from './utils/mediaTypes';
+import { getEnabledExtensions, isMediaFile } from './utils/mediaTypes';
 import { isPathSafe } from './utils/security';
-import { getFileNameFromPath, normalizeVaultPath, safeDecodeURIComponent } from './utils/path';
+import { getFileNameFromPath, getParentPath, normalizeVaultPath, safeDecodeURIComponent } from './utils/path';
 
 export default class ImageManagerPlugin extends Plugin {
 	settings: ImageManagerSettings = DEFAULT_SETTINGS;
+	private static readonly LEGACY_TRASH_FOLDER = '.obsidian-media-toolkit-trash';
 	// 缓存引用的图片以提高大型 Vault 的性能
 	private referencedImagesCache: Set<string> | null = null;
 	private cacheTimestamp: number = 0;
 	private static readonly CACHE_DURATION = 5 * 60 * 1000; // 缓存5分钟
+	private refreshViewsTimer: ReturnType<typeof setTimeout> | null = null;
 
 	/**
 	 * 获取当前语言设置
@@ -37,6 +39,7 @@ export default class ImageManagerPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+		await this.migrateLegacyTrashFolder();
 
 		// 加载样式
 		this.addStyle();
@@ -122,8 +125,44 @@ export default class ImageManagerPlugin extends Plugin {
 		// 注册快捷键
 		this.registerKeyboardShortcuts();
 
+		// 监听 Vault 文件变化，自动失效缓存并刷新视图
+		this.registerVaultEventListeners();
+
 		// 启动时执行隔离文件夹自动清理
 		this.autoCleanupTrashOnStartup();
+	}
+
+	/**
+	 * 迁移旧版默认隔离目录（隐藏目录）到新版默认目录，避免被 Vault 索引忽略
+	 */
+	private async migrateLegacyTrashFolder() {
+		const legacyPath = normalizeVaultPath(ImageManagerPlugin.LEGACY_TRASH_FOLDER);
+		const defaultTrashPath = normalizeVaultPath(DEFAULT_SETTINGS.trashFolder) || DEFAULT_SETTINGS.trashFolder;
+		const configuredTrashPath = normalizeVaultPath(this.settings.trashFolder) || defaultTrashPath;
+		let settingsChanged = false;
+
+		if (configuredTrashPath === legacyPath) {
+			this.settings.trashFolder = defaultTrashPath;
+			settingsChanged = true;
+		}
+
+		try {
+			const adapter = this.app.vault.adapter;
+			const legacyExists = await adapter.exists(legacyPath);
+
+			if (legacyExists) {
+				const targetExists = await adapter.exists(defaultTrashPath);
+				if (!targetExists) {
+					await adapter.rename(legacyPath, defaultTrashPath);
+				}
+			}
+		} catch (error) {
+			console.error('迁移旧版隔离目录失败:', error);
+		}
+
+		if (settingsChanged) {
+			await this.saveData(this.settings);
+		}
 	}
 
 	/**
@@ -229,6 +268,110 @@ export default class ImageManagerPlugin extends Plugin {
 	}
 
 	/**
+	 * 注册 Vault 事件监听
+	 */
+	private registerVaultEventListeners() {
+		const onFileChanged = (file: TAbstractFile) => {
+			this.handleVaultFileChange(file);
+		};
+		const onFileRenamed = (file: TAbstractFile, oldPath: string) => {
+			this.handleVaultFileChange(file, oldPath);
+		};
+
+		this.registerEvent(this.app.vault.on('create', onFileChanged));
+		this.registerEvent(this.app.vault.on('delete', onFileChanged));
+		this.registerEvent(this.app.vault.on('modify', onFileChanged));
+		this.registerEvent(this.app.vault.on('rename', onFileRenamed));
+	}
+
+	/**
+	 * 处理 Vault 文件变化
+	 */
+	private handleVaultFileChange(file: TAbstractFile, oldPath?: string) {
+		if (file instanceof TFolder) {
+			this.clearCache();
+			if (this.settings.autoRefresh) {
+				this.scheduleRefreshOpenViews();
+			}
+			return;
+		}
+
+		if (!(file instanceof TFile)) {
+			return;
+		}
+
+		const normalizedOldPath = normalizeVaultPath(oldPath || '').toLowerCase();
+		const oldWasMarkdown = normalizedOldPath.endsWith('.md');
+		const oldWasMedia = normalizedOldPath ? isMediaFile(normalizedOldPath) : false;
+		const isMarkdown = file.extension === 'md';
+		const isMedia = isMediaFile(file.name);
+
+		// Markdown 变更会影响引用关系，需清除缓存
+		if (isMarkdown || oldWasMarkdown) {
+			this.clearCache();
+		}
+
+		// 仅媒体文件变更（包含重命名前是媒体）才触发视图刷新
+		if (!isMedia && !oldWasMedia) {
+			return;
+		}
+
+		if (!(isMarkdown || oldWasMarkdown)) {
+			this.clearCache();
+		}
+
+		if (this.settings.autoRefresh) {
+			this.scheduleRefreshOpenViews();
+		}
+	}
+
+	/**
+	 * 防抖刷新已打开视图
+	 */
+	private scheduleRefreshOpenViews(delayMs: number = 300) {
+		if (this.refreshViewsTimer) {
+			clearTimeout(this.refreshViewsTimer);
+		}
+
+		this.refreshViewsTimer = setTimeout(() => {
+			this.refreshViewsTimer = null;
+			void this.refreshOpenViews();
+		}, delayMs);
+	}
+
+	/**
+	 * 刷新所有已打开的插件视图
+	 */
+	private async refreshOpenViews() {
+		const tasks: Promise<unknown>[] = [];
+
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_IMAGE_LIBRARY)) {
+			const view = leaf.view;
+			if (view instanceof ImageLibraryView) {
+				tasks.push(view.refreshImages());
+			}
+		}
+
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_UNREFERENCED_IMAGES)) {
+			const view = leaf.view;
+			if (view instanceof UnreferencedImagesView) {
+				tasks.push(view.scanUnreferencedImages());
+			}
+		}
+
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TRASH_MANAGEMENT)) {
+			const view = leaf.view;
+			if (view instanceof TrashManagementView) {
+				tasks.push(view.loadTrashItems());
+			}
+		}
+
+		if (tasks.length > 0) {
+			await Promise.allSettled(tasks);
+		}
+	}
+
+	/**
 	 * 打开隔离文件夹管理视图
 	 */
 	async openTrashManagement() {
@@ -258,6 +401,10 @@ export default class ImageManagerPlugin extends Plugin {
 	}
 
 	onunload() {
+		if (this.refreshViewsTimer) {
+			clearTimeout(this.refreshViewsTimer);
+			this.refreshViewsTimer = null;
+		}
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_IMAGE_LIBRARY);
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_UNREFERENCED_IMAGES);
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_TRASH_MANAGEMENT);
@@ -1097,6 +1244,8 @@ export default class ImageManagerPlugin extends Plugin {
 		this.settings.imageFolder = normalizeVaultPath(this.settings.imageFolder);
 		this.settings.trashFolder = normalizeVaultPath(this.settings.trashFolder) || DEFAULT_SETTINGS.trashFolder;
 		await this.saveData(this.settings);
+		this.clearCache();
+		this.scheduleRefreshOpenViews(150);
 	}
 
 	/**
@@ -1222,10 +1371,6 @@ export default class ImageManagerPlugin extends Plugin {
 
 			if (!normalized) return;
 			referenced.add(normalized);
-			const fileName = getFileNameFromPath(normalized);
-			if (fileName) {
-				referenced.add(fileName.toLowerCase());
-			}
 		};
 
 		// 使用正则扫描所有 Markdown 文件
@@ -1340,9 +1485,8 @@ export default class ImageManagerPlugin extends Plugin {
 		const referenced = await this.getReferencedImages();
 
 		return allImages.filter(file => {
-			const fileName = file.name.toLowerCase();
 			const filePath = normalizeVaultPath(file.path).toLowerCase();
-			return !referenced.has(fileName) && !referenced.has(filePath);
+			return !referenced.has(filePath);
 		});
 	}
 
@@ -1467,6 +1611,50 @@ export default class ImageManagerPlugin extends Plugin {
 		});
 	}
 
+	/**
+	 * 确保目录存在（支持递归创建）
+	 */
+	private async ensureFolderExists(path: string): Promise<boolean> {
+		const normalizedPath = normalizeVaultPath(path);
+
+		if (!normalizedPath) {
+			return true;
+		}
+
+		if (!isPathSafe(normalizedPath)) {
+			return false;
+		}
+
+		const { vault } = this.app;
+		const segments = normalizedPath.split('/').filter(Boolean);
+		let currentPath = '';
+
+		for (const segment of segments) {
+			currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+			const existing = vault.getAbstractFileByPath(currentPath);
+
+			if (existing instanceof TFolder) {
+				continue;
+			}
+
+			if (existing) {
+				return false;
+			}
+
+			try {
+				await vault.createFolder(currentPath);
+			} catch {
+				// 并发创建时忽略“已存在”场景
+				const retried = vault.getAbstractFileByPath(currentPath);
+				if (!(retried instanceof TFolder)) {
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
 	// 安全删除文件到隔离文件夹
 	async safeDeleteFile(file: TFile): Promise<boolean> {
 		const { vault } = this.app;
@@ -1500,9 +1688,10 @@ export default class ImageManagerPlugin extends Plugin {
 
 		try {
 			// 确保隔离文件夹存在
-			const trashFolder = vault.getAbstractFileByPath(trashPath);
-			if (!trashFolder) {
-				await vault.createFolder(trashPath);
+			const folderReady = await this.ensureFolderExists(trashPath);
+			if (!folderReady) {
+				new Notice(this.t('operationFailed', { name: fileName }));
+				return false;
 			}
 
 			// 移动文件到隔离文件夹
@@ -1522,13 +1711,30 @@ export default class ImageManagerPlugin extends Plugin {
 		const normalizedOriginalPath = normalizeVaultPath(safeDecodeURIComponent(originalPath));
 
 		if (!normalizedOriginalPath || !isPathSafe(normalizedOriginalPath)) {
-			new Notice(this.t('restoreFailed'));
+			new Notice(this.t('restoreFailed', { message: this.t('error') }));
 			return false;
 		}
 
+		const targetFile = vault.getAbstractFileByPath(normalizedOriginalPath);
+		if (targetFile) {
+			new Notice(this.t('restoreFailed', { message: this.t('targetFileExists') }));
+			return false;
+		}
+
+		const parentPath = getParentPath(normalizedOriginalPath);
+		if (parentPath) {
+			const parentReady = await this.ensureFolderExists(parentPath);
+			if (!parentReady) {
+				new Notice(this.t('restoreFailed', { message: this.t('error') }));
+				return false;
+			}
+		}
+
+		const restoredName = getFileNameFromPath(normalizedOriginalPath) || file.name;
+
 		try {
 			await vault.rename(file, normalizedOriginalPath);
-			new Notice(this.t('restoreSuccess', { name: file.name }));
+			new Notice(this.t('restoreSuccess', { name: restoredName }));
 			return true;
 		} catch (error) {
 			console.error('恢复文件失败:', error);

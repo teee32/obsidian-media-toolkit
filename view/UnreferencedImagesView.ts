@@ -2,6 +2,7 @@ import { TFile, ItemView, WorkspaceLeaf, setIcon, Menu, MenuItem, Notice } from 
 import ImageManagerPlugin from '../main';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { formatFileSize } from '../utils/format';
+import { getMediaType } from '../utils/mediaTypes';
 
 export const VIEW_TYPE_UNREFERENCED_IMAGES = 'unreferenced-images-view';
 
@@ -55,7 +56,7 @@ export class UnreferencedImagesView extends ItemView {
 
 	async scanUnreferencedImages() {
 		// 如果视图已关闭或 contentEl 不可用，直接返回
-		if (!this.contentEl) {
+		if (!this.contentEl || this.isScanning) {
 			return;
 		}
 
@@ -90,9 +91,9 @@ export class UnreferencedImagesView extends ItemView {
 				cls: 'error-state',
 				text: this.plugin.t('scanError')
 			});
+		} finally {
+			this.isScanning = false;
 		}
-
-		this.isScanning = false;
 	}
 
 	async renderView() {
@@ -160,27 +161,83 @@ export class UnreferencedImagesView extends ItemView {
 		deleteAllBtn.addEventListener('click', () => this.confirmDeleteAll());
 	}
 
+	private renderThumbnailFallback(container: HTMLElement, iconName: string, label: string) {
+		container.empty();
+
+		const fallback = container.createDiv();
+		fallback.style.width = '100%';
+		fallback.style.height = '100%';
+		fallback.style.display = 'flex';
+		fallback.style.flexDirection = 'column';
+		fallback.style.alignItems = 'center';
+		fallback.style.justifyContent = 'center';
+		fallback.style.gap = '6px';
+		fallback.style.color = 'var(--text-muted)';
+
+		const iconEl = fallback.createDiv();
+		setIcon(iconEl, iconName);
+
+		const labelEl = fallback.createDiv({ text: label });
+		labelEl.style.fontSize = '0.75em';
+		labelEl.style.textTransform = 'uppercase';
+	}
+
+	private renderMediaThumbnail(container: HTMLElement, file: TFile, displayName: string) {
+		const mediaType = getMediaType(file.name);
+		const src = this.app.vault.getResourcePath(file);
+
+		if (mediaType === 'image') {
+			const img = container.createEl('img', {
+				attr: {
+					src,
+					alt: displayName
+				}
+			});
+
+			img.addEventListener('error', () => {
+				container.empty();
+				container.createDiv({
+					cls: 'image-error',
+					text: this.plugin.t('imageLoadError')
+				});
+			});
+			return;
+		}
+
+		if (mediaType === 'video') {
+			const video = container.createEl('video');
+			video.src = src;
+			video.muted = true;
+			video.preload = 'metadata';
+			video.playsInline = true;
+			video.style.width = '100%';
+			video.style.height = '100%';
+			video.style.objectFit = 'cover';
+			video.addEventListener('error', () => {
+				this.renderThumbnailFallback(container, 'video', 'VIDEO');
+			});
+			return;
+		}
+
+		if (mediaType === 'audio') {
+			this.renderThumbnailFallback(container, 'music', 'AUDIO');
+			return;
+		}
+
+		if (mediaType === 'document') {
+			this.renderThumbnailFallback(container, 'file-text', 'PDF');
+			return;
+		}
+
+		this.renderThumbnailFallback(container, 'file', 'FILE');
+	}
+
 	renderImageItem(container: HTMLElement, image: UnreferencedImage) {
 		const item = container.createDiv({ cls: 'unreferenced-item' });
 
 		// 图片缩略图
 		const thumbnail = item.createDiv({ cls: 'item-thumbnail' });
-		const src = this.app.vault.getResourcePath(image.file);
-		const img = thumbnail.createEl('img', {
-			attr: {
-				src: src,
-				alt: image.name
-			}
-		});
-
-		// 图片加载失败时显示错误状态
-		img.addEventListener('error', () => {
-			thumbnail.empty();
-			thumbnail.createDiv({
-				cls: 'image-error',
-				text: this.plugin.t('imageLoadError')
-			});
-		});
+		this.renderMediaThumbnail(thumbnail, image.file, image.name);
 
 		// 图片信息
 		const info = item.createDiv({ cls: 'item-info' });
