@@ -10,6 +10,7 @@ Verify the latest media-processing and trash-view changes on a real Obsidian des
 ## Test Environment
 
 - Branch: `master`
+- Target commit: `4604374` (`fix: stabilize media processing rename flow`)
 - Build: run `npm ci` and `npm run build`
 - Obsidian: desktop app, preferably 1.12.x or newer
 - Vault: use a disposable test vault, not a production vault
@@ -33,6 +34,24 @@ Create at least these notes:
 - `note-batch.md` referencing multiple images
 - `note-duplicate.md` referencing `img1.png` and `img1_copy.png`
 
+## Priority Regression Focus
+
+These two checks are the current release blockers. Run them first.
+
+1. Cross-extension single-file processing must finish cleanly.
+   Expected:
+   - the process action returns promptly
+   - the original file path disappears
+   - the new file path exists with the converted extension
+   - note links are rewritten to the new path/extension
+
+2. Batch processing must not stall on the first renamed file.
+   Expected:
+   - batch processing continues past the first file when formats change
+   - output files appear for each supported file
+   - the final success notice appears
+   - linked notes render all converted files correctly
+
 ## Checklist
 
 - [ ] Plugin loads and the media library view opens normally.
@@ -43,9 +62,11 @@ Create at least these notes:
   1. In `note-process.md`, embed `img1.png`.
   2. From the media library, process `img1.png` with an output format different from the original.
   Expected:
+  - the process finishes without hanging on rename/link-update
   - the note link updates automatically
   - the image still renders in the note
   - the old path does not stay broken in the note body
+  - the vault contains only the new converted file, not both old and new names
 
 - [ ] Batch processing works on multiple static images.
   Steps:
@@ -53,7 +74,10 @@ Create at least these notes:
   2. Run batch processing.
   Expected:
   - processing completes without crash
+  - processing does not stop after the first cross-extension rename
   - supported files are processed
+  - output files are written to disk for each processed item
+  - the completion notice appears after the last file
   - notes that referenced them still render correctly
 
 - [ ] GIF and SVG do not expose the processing action.
@@ -108,6 +132,10 @@ Record results as:
 
 - PASS: all checklist items passed
 - FAIL: include the failed item, the observed behavior, and the vault file involved
+- If the failure involves processing/rename/link updates, also include:
+  - whether the output file was created
+  - whether the note link text changed
+  - whether the UI appeared to hang and for roughly how long
 
 ## Cleanup
 
