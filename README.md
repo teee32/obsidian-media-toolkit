@@ -2,7 +2,11 @@
 
 Manage images, video, audio, and PDF files inside your Obsidian vault.
 
+[中文](#中文) | [English](#english)
+
 ## 中文
+
+[Jump to English](#english)
 
 `Obsidian Media Toolkit` 是一个面向真实笔记工作流的媒体管理插件，覆盖媒体浏览、未引用清理、重复检测、隔离管理和图片对齐。
 
@@ -179,6 +183,8 @@ MIT License
 ---
 
 ## English
+
+[跳转到中文](#中文)
 
 `Obsidian Media Toolkit` is a media-management plugin focused on real Obsidian workflows: browsing media, finding unreferenced files, detecting duplicates, managing quarantine, and aligning images in notes.
 
