@@ -4,6 +4,8 @@
  * 纯浏览器 Canvas API 实现，无外部依赖
  */
 
+const DEFAULT_IMAGE_LOAD_TIMEOUT = 8000;
+
 /**
  * 获取图片的灰度像素数据
  */
@@ -124,12 +126,31 @@ export async function computeHashFromBuffer(buffer: ArrayBuffer, mimeType: strin
 /**
  * 加载图片
  */
-function loadImage(src: string): Promise<HTMLImageElement> {
+function loadImage(src: string, timeoutMs: number = DEFAULT_IMAGE_LOAD_TIMEOUT): Promise<HTMLImageElement> {
 	return new Promise((resolve, reject) => {
 		const img = new Image();
+		let settled = false;
+		const timer = setTimeout(() => {
+			if (settled) return;
+			settled = true;
+			// Best-effort abort to avoid hanging requests
+			img.src = '';
+			reject(new Error(`Failed to load image (timeout): ${src}`));
+		}, timeoutMs);
+
 		img.crossOrigin = 'anonymous';
-		img.onload = () => resolve(img);
-		img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+		img.onload = () => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			resolve(img);
+		};
+		img.onerror = () => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			reject(new Error(`Failed to load image: ${src}`));
+		};
 		img.src = src;
 	});
 }
