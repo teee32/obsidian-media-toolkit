@@ -40,11 +40,16 @@ export class DuplicateDetectionView extends ItemView {
 			console.error('DuplicateDetectionView: contentEl not ready');
 			return;
 		}
+		// Reset scan state on reopen to avoid stale "isScanning" blocking the UI.
+		this.isScanning = false;
+		this.scanProgress = { current: 0, total: 0 };
 		this.contentEl.addClass('duplicate-detection-view');
 		await this.renderView();
 	}
 
-	async onClose() {}
+	async onClose() {
+		this.isScanning = false;
+	}
 
 	/**
 	 * 渲染视图
@@ -172,78 +177,83 @@ export class DuplicateDetectionView extends ItemView {
 		this.isScanning = true;
 		this.duplicateGroups = [];
 
-		// 获取所有图片文件
-		const imageFiles: TFile[] = [];
-		if (this.plugin.fileIndex.isInitialized) {
-			for (const entry of this.plugin.fileIndex.getFiles()) {
-				if (getMediaType(entry.name) === 'image') {
-					const file = this.app.vault.getAbstractFileByPath(entry.path);
-					if (file instanceof TFile) {
-						imageFiles.push(file);
+		try {
+			// 获取所有图片文件
+			const imageFiles: TFile[] = [];
+			if (this.plugin.fileIndex.isInitialized) {
+				for (const entry of this.plugin.fileIndex.getFiles()) {
+					if (getMediaType(entry.name) === 'image') {
+						const file = this.app.vault.getAbstractFileByPath(entry.path);
+						if (file instanceof TFile) {
+							imageFiles.push(file);
+						}
 					}
 				}
+			} else {
+				const allFiles = await this.plugin.getAllImageFiles();
+				imageFiles.push(...allFiles.filter(f => getMediaType(f.name) === 'image'));
 			}
-		} else {
-			const allFiles = await this.plugin.getAllImageFiles();
-			imageFiles.push(...allFiles.filter(f => getMediaType(f.name) === 'image'));
-		}
 
-		this.scanProgress = { current: 0, total: imageFiles.length };
-		await this.renderView();
+			this.scanProgress = { current: 0, total: imageFiles.length };
+			await this.renderView();
 
-		// 分批计算哈希
-		const hashMap = new Map<string, string>();
-		const BATCH_SIZE = 5;
+			// 分批计算哈希
+			const hashMap = new Map<string, string>();
+			const BATCH_SIZE = 5;
 
-		for (let i = 0; i < imageFiles.length; i += BATCH_SIZE) {
-			const batch = imageFiles.slice(i, i + BATCH_SIZE);
+			for (let i = 0; i < imageFiles.length; i += BATCH_SIZE) {
+				const batch = imageFiles.slice(i, i + BATCH_SIZE);
 
-			await Promise.all(batch.map(async (file) => {
-				try {
-					const src = this.app.vault.getResourcePath(file);
-					const hash = await computePerceptualHash(src);
-					hashMap.set(file.path, hash);
-				} catch (error) {
-					console.warn(`Hash computation failed for ${file.name}:`, error);
+				await Promise.all(batch.map(async (file) => {
+					try {
+						const src = this.app.vault.getResourcePath(file);
+						const hash = await computePerceptualHash(src);
+						hashMap.set(file.path, hash);
+					} catch (error) {
+						console.warn(`Hash computation failed for ${file.name}:`, error);
+					}
+				}));
+
+				this.scanProgress.current = Math.min(i + BATCH_SIZE, imageFiles.length);
+
+				// 更新进度 UI
+				const progressFill = this.contentEl.querySelector('.progress-fill') as HTMLElement;
+				const progressText = this.contentEl.querySelector('.progress-text') as HTMLElement;
+				if (progressFill && progressText) {
+					const percent = Math.round((this.scanProgress.current / this.scanProgress.total) * 100);
+					progressFill.style.width = `${percent}%`;
+					progressText.textContent = this.plugin.t('scanProgress', {
+						current: this.scanProgress.current,
+						total: this.scanProgress.total
+					});
 				}
-			}));
 
-			this.scanProgress.current = Math.min(i + BATCH_SIZE, imageFiles.length);
-
-			// 更新进度 UI
-			const progressFill = this.contentEl.querySelector('.progress-fill') as HTMLElement;
-			const progressText = this.contentEl.querySelector('.progress-text') as HTMLElement;
-			if (progressFill && progressText) {
-				const percent = Math.round((this.scanProgress.current / this.scanProgress.total) * 100);
-				progressFill.style.width = `${percent}%`;
-				progressText.textContent = this.plugin.t('scanProgress', {
-					current: this.scanProgress.current,
-					total: this.scanProgress.total
-				});
+				// 让 UI 有机会更新
+				await new Promise(resolve => setTimeout(resolve, 10));
 			}
 
-			// 让 UI 有机会更新
-			await new Promise(resolve => setTimeout(resolve, 10));
-		}
+			// 查找重复组
+			const threshold = this.plugin.settings.duplicateThreshold;
+			this.duplicateGroups = findDuplicateGroups(hashMap, threshold)
+				.map(group => this.normalizeDuplicateGroup(group));
 
-		// 查找重复组
-		const threshold = this.plugin.settings.duplicateThreshold;
-		this.duplicateGroups = findDuplicateGroups(hashMap, threshold)
-			.map(group => this.normalizeDuplicateGroup(group));
-		this.isScanning = false;
-
-		await this.renderView();
-
-		if (this.duplicateGroups.length === 0) {
-			new Notice(this.plugin.t('noDuplicatesFound'));
-		} else {
-			const totalDuplicates = this.duplicateGroups.reduce(
-				(sum, g) => sum + g.files.length - 1, 0
-			);
-			new Notice(this.plugin.t('duplicatesFound', {
-				groups: this.duplicateGroups.length,
-				files: totalDuplicates
-			}));
+			if (this.duplicateGroups.length === 0) {
+				new Notice(this.plugin.t('noDuplicatesFound'));
+			} else {
+				const totalDuplicates = this.duplicateGroups.reduce(
+					(sum, g) => sum + g.files.length - 1, 0
+				);
+				new Notice(this.plugin.t('duplicatesFound', {
+					groups: this.duplicateGroups.length,
+					files: totalDuplicates
+				}));
+			}
+		} catch (error) {
+			console.error('Duplicate detection failed:', error);
+			new Notice(this.plugin.t('scanError'));
+		} finally {
+			this.isScanning = false;
+			await this.renderView();
 		}
 	}
 

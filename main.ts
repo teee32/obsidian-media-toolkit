@@ -1252,6 +1252,64 @@ export default class ImageManagerPlugin extends Plugin {
 	background: var(--background-tertiary);
 }
 
+/* ===== 重复检测（后备样式） ===== */
+.scan-progress {
+	padding: 20px;
+	text-align: center;
+}
+
+.progress-bar {
+	height: 8px;
+	background: var(--background-modifier-border);
+	border-radius: 4px;
+	overflow: hidden;
+	margin: 16px 0;
+}
+
+.progress-fill {
+	height: 100%;
+	background: var(--interactive-accent);
+	border-radius: 4px;
+	transition: width 0.3s ease;
+}
+
+.progress-text {
+	font-size: 0.9em;
+	color: var(--text-muted);
+}
+
+.duplicate-detection-view {
+	height: 100%;
+	overflow-y: auto;
+	padding: 16px;
+	box-sizing: border-box;
+}
+
+.duplicate-header {
+	margin-bottom: 16px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.duplicate-header .header-actions {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	margin-top: 8px;
+}
+
+.threshold-label {
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+.duplicate-group {
+	margin-bottom: 16px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	overflow: hidden;
+}
+
 /* ===== 响应式设计 ===== */
 @media (max-width: 768px) {
 	.image-library-header,
