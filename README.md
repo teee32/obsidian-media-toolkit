@@ -13,8 +13,6 @@ Manage images, video, audio, and PDF files inside your Obsidian vault.
 - 搜索、排序、分页、多选、复制路径/链接、在笔记中查找
 - 缩略图缓存和预览弹窗，减少重复打开时的等待
 
-![Media Library](./assets/media-library.png)
-
 #### 静态图片处理
 - 在媒体库中直接处理 PNG / JPG / JPEG / WEBP / BMP
 - 支持单文件和批量处理
@@ -26,8 +24,6 @@ Manage images, video, audio, and PDF files inside your Obsidian vault.
 - 扫描未被任何笔记引用的媒体文件
 - 使用感知哈希检测像素级重复图片
 - 支持将未引用文件或重复文件移动到隔离区，而不是直接删除
-
-![Unreferenced Media](./assets/unreferenced-media.png)
 
 #### 隔离区管理
 - 删除操作优先进入隔离区
@@ -124,8 +120,6 @@ MIT License
 - Search, sort, paginate, multi-select, copy paths/links, and find references in notes
 - Cached thumbnails and preview modal for faster repeated access
 
-![Media Library](./assets/media-library.png)
-
 #### Static Image Processing
 - Process PNG / JPG / JPEG / WEBP / BMP directly from the media library
 - Single-file and batch processing flows
@@ -137,8 +131,6 @@ MIT License
 - Scan for media files that are not referenced by any note
 - Detect pixel-level duplicate images with perceptual hashing
 - Move unreferenced or duplicate files into quarantine instead of deleting immediately
-
-![Unreferenced Media](./assets/unreferenced-media.png)
 
 #### Quarantine Management
 - Destructive actions go through a quarantine folder first
