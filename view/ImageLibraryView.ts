@@ -653,7 +653,7 @@ export class ImageLibraryView extends ItemView {
 			item.setTitle(this.plugin.t('copyLink'))
 				.setIcon('copy')
 				.onClick(() => {
-					const link = `[[${file.name}]]`;
+					const link = this.plugin.getStableWikiLink(file);
 					void navigator.clipboard.writeText(link).then(() => {
 						new Notice(this.plugin.t('linkCopied'));
 					}).catch((error) => {
@@ -667,8 +667,7 @@ export class ImageLibraryView extends ItemView {
 			item.setTitle(this.plugin.t('openOriginal'))
 				.setIcon('external-link')
 				.onClick(() => {
-					const src = this.app.vault.getResourcePath(file);
-					window.open(src, '_blank', 'noopener,noreferrer');
+					void this.plugin.openOriginalFile(file);
 				});
 		});
 

@@ -189,6 +189,7 @@ export interface Translations {
 
 	// 媒体预览
 	unsupportedFileType: string;
+	documentEmbedPreviewUnsupported: string;
 	copyPathBtn: string;
 	copyLinkBtn: string;
 	findInNotes: string;
@@ -304,7 +305,7 @@ const zh: Translations = {
 	openInNotes: '在笔记中查找',
 	copyPath: '复制文件路径',
 	copyLink: '复制Markdown链接',
-	openOriginal: '打开原始文件',
+	openOriginal: '打开原文件',
 	preview: '预览',
 
 	// 快捷键
@@ -451,6 +452,7 @@ const zh: Translations = {
 
 	// 媒体预览
 	unsupportedFileType: '不支持预览此类型文件',
+	documentEmbedPreviewUnsupported: '该文档类型不支持内嵌预览，请使用“打开原文件”',
 	copyPathBtn: '复制路径',
 	copyLinkBtn: '复制链接',
 	findInNotes: '在笔记中查找',
@@ -713,6 +715,7 @@ const en: Translations = {
 
 	// Media Preview
 	unsupportedFileType: 'Preview not supported for this file type',
+	documentEmbedPreviewUnsupported: 'Embedded preview is not supported for this document type. Use "Open Original".',
 	copyPathBtn: 'Copy Path',
 	copyLinkBtn: 'Copy Link',
 	findInNotes: 'Find in Notes',

@@ -8,14 +8,22 @@ export class MediaPreviewModal extends Modal {
 	currentIndex: number = 0;
 	allFiles: TFile[] = [];
 	private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
+	private onDidClose: (() => void) | null = null;
 
-	constructor(app: any, plugin: ImageManagerPlugin, file: TFile, allFiles: TFile[] = []) {
+	constructor(
+		app: any,
+		plugin: ImageManagerPlugin,
+		file: TFile,
+		allFiles: TFile[] = [],
+		onDidClose: (() => void) | null = null
+	) {
 		super(app);
 		this.plugin = plugin;
 		this.file = file;
 		this.allFiles = allFiles.length > 0 ? allFiles : [file];
 		const idx = this.allFiles.findIndex(f => f.path === file.path);
 		this.currentIndex = idx >= 0 ? idx : 0;
+		this.onDidClose = onDidClose;
 	}
 
 	onOpen() {
@@ -98,7 +106,9 @@ export class MediaPreviewModal extends Modal {
 		} else if (isDocument) {
 			const unsupported = container.createDiv({ cls: 'preview-unsupported' });
 			unsupported.createDiv({ text: getDocumentDisplayLabel(file.name) });
-			unsupported.createDiv({ text: this.plugin.t('unsupportedFileType') });
+			unsupported.createDiv({
+				text: this.plugin.t('documentEmbedPreviewUnsupported') || this.plugin.t('unsupportedFileType')
+			});
 		} else {
 			container.createDiv({ cls: 'preview-unsupported', text: this.plugin.t('unsupportedFileType') });
 		}
@@ -162,7 +172,7 @@ export class MediaPreviewModal extends Modal {
 		const copyLinkBtn = actions.createEl('button');
 		copyLinkBtn.textContent = this.plugin.t('copyLinkBtn');
 		copyLinkBtn.addEventListener('click', () => {
-			const link = `[[${file.name}]]`;
+			const link = this.plugin.getStableWikiLink(file);
 			void navigator.clipboard.writeText(link).then(() => {
 				new Notice(this.plugin.t('linkCopied'));
 			}).catch((error) => {
@@ -175,8 +185,7 @@ export class MediaPreviewModal extends Modal {
 		const openOriginalBtn = actions.createEl('button');
 		openOriginalBtn.textContent = this.plugin.t('openOriginal');
 		openOriginalBtn.addEventListener('click', () => {
-			const src = this.app.vault.getResourcePath(file);
-			window.open(src, '_blank', 'noopener,noreferrer');
+			void this.plugin.openOriginalFile(file);
 		});
 
 		// 在笔记中查找
@@ -260,5 +269,10 @@ export class MediaPreviewModal extends Modal {
 			this.keydownHandler = null;
 		}
 		contentEl.empty();
+		if (this.onDidClose) {
+			try {
+				this.onDidClose();
+			} catch (_) {}
+		}
 	}
 }

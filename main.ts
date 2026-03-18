@@ -28,6 +28,7 @@ export default class ImageManagerPlugin extends Plugin {
 	fileIndex: MediaFileIndex = new MediaFileIndex(null as any);
 	private indexedExtensionsKey: string = '';
 	private indexedTrashFolder: string = '';
+	private activePreviewModal: MediaPreviewModal | null = null;
 
 	/**
 	 * 获取当前语言设置
@@ -474,7 +475,22 @@ export default class ImageManagerPlugin extends Plugin {
 			window.open(src, '_blank', 'noopener,noreferrer');
 			return;
 		}
-		new MediaPreviewModal(this.app, this, file).open();
+
+		// 保持单实例预览，避免并发弹窗导致按钮/状态错位
+		if (this.activePreviewModal) {
+			try {
+				this.activePreviewModal.close();
+			} catch (_) {}
+			this.activePreviewModal = null;
+		}
+
+		const modal = new MediaPreviewModal(this.app, this, file, [], () => {
+			if (this.activePreviewModal === modal) {
+				this.activePreviewModal = null;
+			}
+		});
+		this.activePreviewModal = modal;
+		modal.open();
 	}
 
 	onunload() {
@@ -490,6 +506,12 @@ export default class ImageManagerPlugin extends Plugin {
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_UNREFERENCED_IMAGES);
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_TRASH_MANAGEMENT);
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_DUPLICATE_DETECTION);
+		if (this.activePreviewModal) {
+			try {
+				this.activePreviewModal.close();
+			} catch (_) {}
+			this.activePreviewModal = null;
+		}
 		this.removeManagedStyles();
 	}
 
@@ -1909,6 +1931,75 @@ export default class ImageManagerPlugin extends Plugin {
 		} else {
 			new Notice(this.t('notReferenced'));
 		}
+	}
+
+	/**
+	 * 生成可稳定解析的 Wiki 链接（同名冲突时自动使用路径）
+	 */
+	getStableWikiLink(file: TFile): string {
+		const normalizedPath = normalizeVaultPath(file.path) || file.path;
+		const normalizedPathLower = normalizedPath.toLowerCase();
+		const lowerName = file.name.toLowerCase();
+		const hasNameCollision = this.app.vault.getFiles().some(candidate =>
+			candidate.path !== file.path &&
+			candidate.name.toLowerCase() === lowerName &&
+			(normalizeVaultPath(candidate.path) || candidate.path).toLowerCase() !== normalizedPathLower
+		);
+		const linkPath = hasNameCollision ? normalizedPath : file.name;
+		return `[[${linkPath}]]`;
+	}
+
+	/**
+	 * 通过系统默认程序打开原文件（桌面端优先）
+	 */
+	async openOriginalFile(file: TFile): Promise<boolean> {
+		const appLike = this.app as unknown as {
+			openWithDefaultApp?: (path: string) => Promise<void> | void;
+		};
+
+		try {
+			if (typeof appLike.openWithDefaultApp === 'function') {
+				await appLike.openWithDefaultApp(file.path);
+				return true;
+			}
+		} catch (error) {
+			console.warn('openWithDefaultApp 失败，尝试回退方案:', error);
+		}
+
+		const adapter = this.app.vault.adapter as unknown as {
+			getFullPath?: (path: string) => string;
+		};
+		const fullPath = typeof adapter.getFullPath === 'function'
+			? adapter.getFullPath(file.path)
+			: '';
+
+		try {
+			const electronRequire = (window as unknown as { require?: (name: string) => any }).require;
+			if (typeof electronRequire === 'function') {
+				const electron = electronRequire('electron');
+				const shell = electron?.shell;
+				if (shell && fullPath && typeof shell.openPath === 'function') {
+					const errorMessage = await shell.openPath(fullPath);
+					if (!errorMessage) {
+						return true;
+					}
+				}
+				if (shell && typeof shell.openExternal === 'function') {
+					await shell.openExternal(this.app.vault.getResourcePath(file));
+					return true;
+				}
+			}
+		} catch (error) {
+			console.warn('electron shell 打开失败，尝试浏览器回退:', error);
+		}
+
+		const popup = window.open(this.app.vault.getResourcePath(file), '_blank', 'noopener,noreferrer');
+		if (popup) {
+			return true;
+		}
+
+		new Notice(this.t('operationFailed', { name: file.name }));
+		return false;
 	}
 
 	// 对齐选中的图片

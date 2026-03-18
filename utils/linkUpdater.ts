@@ -31,13 +31,21 @@ export async function updateLinksInVault(
 	if (!(newFile instanceof TFile)) {
 		return 0;
 	}
+	const forceDisambiguateBasename = hasFilenameCollision(app, newFile.name, normalizedNewPath);
 
 	const markdownFiles = app.vault.getMarkdownFiles();
 	let updatedCount = 0;
 
 	for (const file of markdownFiles) {
 		const content = await app.vault.read(file);
-		const newContent = updateLinksInContent(app, file, content, normalizedOldPath, newFile);
+		const newContent = updateLinksInContent(
+			app,
+			file,
+			content,
+			normalizedOldPath,
+			newFile,
+			forceDisambiguateBasename
+		);
 
 		if (newContent !== content) {
 			await app.vault.modify(file, newContent);
@@ -56,7 +64,8 @@ export function updateLinksInContent(
 	sourceFile: TFile,
 	content: string,
 	oldPath: string,
-	newFile: TFile
+	newFile: TFile,
+	forceDisambiguateBasename: boolean = false
 ): string {
 	const normalizedNewPath = normalizeVaultPath(newFile.path);
 
@@ -67,7 +76,12 @@ export function updateLinksInContent(
 			return fullMatch;
 		}
 
-		const replacementLinkPath = composeReplacementPath(parsed.path, sourceFile.path, normalizedNewPath);
+		const replacementLinkPath = composeReplacementPath(
+			parsed.path,
+			sourceFile.path,
+			normalizedNewPath,
+			forceDisambiguateBasename
+		);
 		return `${prefix}${replacementLinkPath}${parsed.subpath || ''}${alias}${suffix}`;
 	});
 
@@ -79,7 +93,12 @@ export function updateLinksInContent(
 		}
 
 		const nextDestination = formatMarkdownDestination(
-			composeReplacementPath(parsed.path, sourceFile.path, normalizedNewPath),
+			composeReplacementPath(
+				parsed.path,
+				sourceFile.path,
+				normalizedNewPath,
+				forceDisambiguateBasename
+			),
 			parsed.suffix,
 			parsed.isWrapped
 		);
@@ -156,10 +175,18 @@ function shouldRewriteLink(rawPath: string, resolvedPath: string, oldPath: strin
 	return normalized === oldBase;
 }
 
-function composeReplacementPath(rawPath: string, sourcePath: string, newPath: string): string {
+function composeReplacementPath(
+	rawPath: string,
+	sourcePath: string,
+	newPath: string,
+	forceDisambiguateBasename: boolean
+): string {
 	const style = detectLinkPathStyle(rawPath);
 	switch (style) {
 		case 'basename':
+			if (forceDisambiguateBasename) {
+				return newPath;
+			}
 			return getFileNameFromPath(newPath) || newPath;
 		case 'relative':
 			return toRelativeVaultPath(sourcePath, newPath) || getFileNameFromPath(newPath) || newPath;
@@ -169,6 +196,15 @@ function composeReplacementPath(rawPath: string, sourcePath: string, newPath: st
 		default:
 			return newPath;
 	}
+}
+
+function hasFilenameCollision(app: App, fileName: string, canonicalPath: string): boolean {
+	const normalizedPath = normalizeVaultPath(canonicalPath).toLowerCase();
+	const lowerName = fileName.toLowerCase();
+	return app.vault.getFiles().some(file =>
+		file.name.toLowerCase() === lowerName &&
+		normalizeVaultPath(file.path).toLowerCase() !== normalizedPath
+	);
 }
 
 function detectLinkPathStyle(rawPath: string): LinkPathStyle {

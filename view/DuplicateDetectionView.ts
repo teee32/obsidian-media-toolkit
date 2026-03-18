@@ -262,6 +262,11 @@ export class DuplicateDetectionView extends ItemView {
 			const threshold = this.plugin.settings.duplicateThreshold;
 			this.duplicateGroups = findDuplicateGroups(hashMap, threshold)
 				.map(group => this.normalizeDuplicateGroup(group));
+			this.duplicateGroups.sort((a, b) => {
+				const pathA = a.files[0]?.path || '';
+				const pathB = b.files[0]?.path || '';
+				return pathA.localeCompare(pathB);
+			});
 
 			if (this.duplicateGroups.length === 0) {
 				new Notice(this.plugin.t('noDuplicatesFound'));
@@ -357,15 +362,29 @@ export class DuplicateDetectionView extends ItemView {
 				quarantineBtn.createSpan({ text: ` ${this.plugin.t('quarantine')}` });
 				quarantineBtn.addEventListener('click', async () => {
 					const keepFile = group.files[0];
-					await updateLinksInVault(this.app, file.path, keepFile.path);
-					const result = await this.plugin.safeDeleteFile(file);
-					if (result) {
-						group.files.splice(i, 1);
+					if (!keepFile || keepFile.path === file.path) {
+						return;
+					}
+
+					quarantineBtn.disabled = true;
+					try {
+						await updateLinksInVault(this.app, file.path, keepFile.path);
+						const result = await this.plugin.safeDeleteFile(file);
+						if (!result) {
+							quarantineBtn.disabled = false;
+							return;
+						}
+
+						group.files = group.files.filter(entry => entry.path !== file.path);
 						if (group.files.length <= 1) {
 							const idx = this.duplicateGroups.indexOf(group);
 							if (idx >= 0) this.duplicateGroups.splice(idx, 1);
 						}
 						await this.renderView();
+					} catch (error) {
+						console.error('单个重复隔离失败:', error);
+						new Notice(this.plugin.t('operationFailed', { name: file.name }));
+						quarantineBtn.disabled = false;
 					}
 				});
 			}
