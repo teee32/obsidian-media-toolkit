@@ -16,6 +16,8 @@
   - 两个文件内容完全相同，用于重复检测。
 - `other/moon-a.jpg`
   - 与上面同名但路径不同，用于验证不会误改同名附件链接。
+- `other/moon-b.jpg`
+  - 与保留文件同名但路径不同，用于验证改写后的新链接不会因为只写文件名而变得歧义。
 
 ### 文档
 
@@ -35,6 +37,9 @@
   - 写入 `![moon hash](../attachments/moon-a.jpg#page=1)`
 - `notes/same-name.md`
   - 写入 `![[other/moon-a.jpg]]`
+- `notes/same-name-target.md`
+  - 写入 `![[other/moon-b.jpg]]`
+  - 用于验证改写 `moon-a.jpg` 之后，不会把本来应该指向 `other/moon-b.jpg` 的裸文件名链路弄混。
 - `notes/docs.md`
   - 分别写入 `[[sample.pdf]]`、`[[sample.docx]]`、`[[sample.xlsx]]`、`[[sample.pptx]]`
 
@@ -75,6 +80,9 @@
 - [ ] `notes/markdown-links.md` 里的带查询参数链接 `?raw=1` 仍然保留查询参数，只替换文件目标。
 - [ ] `notes/markdown-links.md` 里的带锚点链接 `#page=1` 仍然保留锚点，只替换文件目标。
 - [ ] `notes/same-name.md` 里的 `![[other/moon-a.jpg]]` 不会被误改。
+- [ ] 如果笔记里原本是裸文件名写法，改写后仍然能实际打开到保留文件，而不是只在文本上变成另一个可能歧义的文件名。
+- [ ] 当 Vault 中同时存在 `other/moon-b.jpg` 时，改写后的链接不会错误指向它。
+- [ ] 对改写后的链接执行点击预览或 `Ctrl/Cmd+Click`，实际打开的资源就是保留文件。
 - [ ] 隔离完成后，笔记中不应再残留指向已隔离副本的失效链接。
 
 ### 6. 隔离区管理
@@ -95,6 +103,7 @@
 - [ ] 所有视图切换后仍然稳定，没有明显卡死或报错 Notice。
 - [ ] 重复检测、未引用视图、隔离管理三条主流程都至少完整走通一次。
 - [ ] 如果发现问题，已经记录复现步骤、测试文件、实际结果和预期结果。
+- [ ] 本轮验证完成后，按约定删除本文件 `TEMP_REGRESSION_CHECKLIST.md`，避免临时文档长期留在仓库中。
 
 ## 结果记录模板
 
