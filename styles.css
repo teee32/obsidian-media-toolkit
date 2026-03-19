@@ -402,6 +402,18 @@
 	font-size: 0.85em;
 }
 
+.clear-search {
+	padding: 4px;
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.clear-search:hover {
+	color: var(--text-normal);
+}
+
 /* ===== 分页控件 ===== */
 .pagination {
 	display: flex;
@@ -435,6 +447,16 @@
 .page-info {
 	color: var(--text-muted);
 	font-size: 0.9em;
+}
+
+.page-jump-input {
+	width: 50px;
+	padding: 4px 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	text-align: center;
 }
 
 /* ===== 选择模式 ===== */
@@ -473,6 +495,11 @@
 	color: var(--text-error);
 }
 
+.toolbar-button.danger:hover {
+	background: var(--background-modifier-error);
+	color: white;
+}
+
 .image-item {
 	position: relative;
 }
@@ -502,6 +529,11 @@
 
 .alignment-right {
 	text-align: right;
+}
+
+.alignment-image {
+	max-width: 100%;
+	height: auto;
 }
 
 .inline-align-center {
@@ -715,6 +747,18 @@
 	background: var(--background-tertiary);
 }
 
+.delete-confirm-warning {
+	color: var(--text-warning);
+	margin: 16px 0;
+}
+
+.delete-confirm-buttons {
+	display: flex;
+	gap: 12px;
+	justify-content: flex-end;
+	margin-top: 20px;
+}
+
 /* ===== v2.0: Dashboard ===== */
 .trash-dashboard {
 	display: grid;
@@ -848,6 +892,57 @@
 	gap: 12px;
 	font-size: 0.8em;
 	color: var(--text-muted);
+}
+
+.item-type-badge {
+	display: inline-flex;
+	align-items: center;
+	width: fit-content;
+	padding: 2px 8px;
+	margin-top: 4px;
+	border-radius: 999px;
+	font-size: 0.75em;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	border: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	background: var(--background-secondary);
+}
+
+.media-thumbnail-fallback {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	color: var(--text-muted);
+}
+
+.media-thumbnail-fallback-label {
+	font-size: 0.75em;
+	text-transform: uppercase;
+}
+
+.media-thumbnail-fallback-label-strong {
+	font-weight: 600;
+	letter-spacing: 0.04em;
+}
+
+.media-thumbnail-video {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.media-thumbnail-image {
+	opacity: 0;
+	transition: opacity 0.2s;
+}
+
+.media-thumbnail-image.is-loaded {
+	opacity: 1;
 }
 
 /* ===== v2.0: Duplicate Detection ===== */

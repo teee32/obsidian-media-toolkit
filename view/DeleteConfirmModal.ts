@@ -1,8 +1,8 @@
-import { Modal, Notice, TFile } from 'obsidian';
+import { App, Modal, Notice, TFile } from 'obsidian';
 import ImageManagerPlugin from '../main';
 import { formatFileSize } from '../utils/format';
 
-interface UnreferencedImage {
+export interface DeleteTarget {
 	file: TFile;
 	path: string;
 	name: string;
@@ -12,14 +12,14 @@ interface UnreferencedImage {
 
 export class DeleteConfirmModal extends Modal {
 	plugin: ImageManagerPlugin;
-	images: UnreferencedImage[];
+	images: DeleteTarget[];
 	onConfirm: () => Promise<void>;
 	private isDeleting: boolean = false;
 
 	constructor(
-		app: any,
+		app: App,
 		plugin: ImageManagerPlugin,
-		images: UnreferencedImage[],
+		images: DeleteTarget[],
 		onConfirm: () => Promise<void>
 	) {
 		super(app);
@@ -44,12 +44,12 @@ export class DeleteConfirmModal extends Modal {
 
 		// 警告信息
 		const warning = contentEl.createDiv({ cls: 'modal-warning' });
-		const warningText = warning.createEl('p');
-		warningText.textContent = this.plugin.settings.useTrashFolder
-			? t('deleteToTrash')
-			: t('confirmClearAll');
-		warningText.style.color = 'var(--text-warning)';
-		warningText.style.margin = '16px 0';
+		warning.createEl('p', {
+			cls: 'delete-confirm-warning',
+			text: this.plugin.settings.useTrashFolder
+				? t('deleteToTrash')
+				: t('confirmClearAll')
+		});
 
 		// 文件列表
 		const listContainer = contentEl.createDiv({ cls: 'modal-file-list' });
@@ -70,11 +70,7 @@ export class DeleteConfirmModal extends Modal {
 		}
 
 		// 按钮区域
-		const buttonContainer = contentEl.createDiv({ cls: 'modal-buttons' });
-		buttonContainer.style.display = 'flex';
-		buttonContainer.style.gap = '12px';
-		buttonContainer.style.justifyContent = 'flex-end';
-		buttonContainer.style.marginTop = '20px';
+		const buttonContainer = contentEl.createDiv({ cls: 'modal-buttons delete-confirm-buttons' });
 
 		// 取消按钮
 		const cancelBtn = buttonContainer.createEl('button', {
@@ -88,27 +84,31 @@ export class DeleteConfirmModal extends Modal {
 			text: this.plugin.settings.useTrashFolder ? t('deleteToTrash') : t('delete'),
 			cls: 'mod-warning'
 		});
-		deleteBtn.addEventListener('click', async () => {
-			if (this.isDeleting) return;
-			this.isDeleting = true;
-			deleteBtn.setAttribute('disabled', 'true');
-			deleteBtn.textContent = t('processing') || '处理中...';
-
-			try {
-				await this.onConfirm();
-				this.close();
-			} catch (error) {
-				console.error('删除操作失败:', error);
-				new Notice(t('deleteFailed'));
-				this.isDeleting = false;
-				deleteBtn.removeAttribute('disabled');
-				deleteBtn.textContent = this.plugin.settings.useTrashFolder ? t('deleteToTrash') : t('delete');
-			}
+		deleteBtn.addEventListener('click', () => {
+			void this.handleDelete(deleteBtn, t);
 		});
 	}
 
 	onClose() {
 		const { contentEl } = this;
 		contentEl.empty();
+	}
+
+	private async handleDelete(deleteBtn: HTMLButtonElement, t: (key: string) => string): Promise<void> {
+		if (this.isDeleting) return;
+		this.isDeleting = true;
+		deleteBtn.setAttribute('disabled', 'true');
+		deleteBtn.textContent = t('processing') || '处理中...';
+
+		try {
+			await this.onConfirm();
+			this.close();
+		} catch (error) {
+			console.error('删除操作失败:', error);
+			new Notice(t('deleteFailed'));
+			this.isDeleting = false;
+			deleteBtn.removeAttribute('disabled');
+			deleteBtn.textContent = this.plugin.settings.useTrashFolder ? t('deleteToTrash') : t('delete');
+		}
 	}
 }

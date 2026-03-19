@@ -16,6 +16,10 @@ interface ThumbnailEntry {
 	createdAt: number;
 }
 
+function toError(error: unknown, fallbackMessage: string): Error {
+	return error instanceof Error ? error : new Error(fallbackMessage);
+}
+
 export class ThumbnailCache {
 	private db: IDBDatabase | null = null;
 	private maxEntries: number;
@@ -212,7 +216,7 @@ export class ThumbnailCache {
 	/**
 	 * LRU 淘汰：超过最大条目数时删除最旧的
 	 */
-	private async evictIfNeeded(): Promise<void> {
+	private evictIfNeeded(): void {
 		if (!this.db) return;
 
 		const tx = this.db.transaction(STORE_NAME, 'readonly');
@@ -295,7 +299,7 @@ export function generateThumbnail(
 					0.7
 				);
 			} catch (error) {
-				reject(error);
+				reject(toError(error, 'Failed to generate thumbnail'));
 			}
 		};
 

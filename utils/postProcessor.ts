@@ -1,4 +1,4 @@
-import { MarkdownPostProcessorContext, TFile } from 'obsidian';
+import { TFile } from 'obsidian';
 import ImageManagerPlugin from '../main';
 import { AlignmentType } from './imageAlignment';
 import { isSafeUrl, isPathSafe } from './security';
@@ -20,7 +20,7 @@ export class AlignmentPostProcessor {
 	 * 注册 PostProcessor
 	 */
 	register() {
-		this.plugin.registerMarkdownPostProcessor((element, context) => {
+		this.plugin.registerMarkdownPostProcessor((element) => {
 			this.processAlignment(element);
 		});
 	}
@@ -37,19 +37,22 @@ export class AlignmentPostProcessor {
 		);
 
 		const nodesToProcess: { node: Text; parent: HTMLElement }[] = [];
-		let node: Text | null;
+		let currentNode = walker.nextNode();
 
-		while (node = walker.nextNode() as Text) {
+		while (currentNode instanceof Text) {
+			const node = currentNode;
 			const text = node.textContent || '';
 			const parentElement = node.parentElement;
-			if (!parentElement) continue;
-			// 检测旧的 ===center=== 语法 或新的 ![[image|center]] 语法
-			if (text.includes('===') && (text.includes('center') || text.includes('left') || text.includes('right'))) {
-				nodesToProcess.push({ node, parent: parentElement });
-			} else if (text.includes('|center') || text.includes('|left') || text.includes('|right')) {
-				// 新语法: ![[image|center]]
-				nodesToProcess.push({ node, parent: parentElement });
+			if (parentElement) {
+				// 检测旧的 ===center=== 语法 或新的 ![[image|center]] 语法
+				if (text.includes('===') && (text.includes('center') || text.includes('left') || text.includes('right'))) {
+					nodesToProcess.push({ node, parent: parentElement });
+				} else if (text.includes('|center') || text.includes('|left') || text.includes('|right')) {
+					// 新语法: ![[image|center]]
+					nodesToProcess.push({ node, parent: parentElement });
+				}
 			}
+			currentNode = walker.nextNode();
 		}
 
 		// 处理找到的节点
@@ -81,9 +84,7 @@ export class AlignmentPostProcessor {
 
 			// 创建对齐容器
 			const alignContainer = document.createElement('div');
-			alignContainer.className = `alignment-${alignment}`;
-			alignContainer.style.textAlign = alignment;
-			alignContainer.style.margin = '10px 0';
+			alignContainer.className = `alignment-block alignment-${alignment}`;
 
 			// 渲染图片
 			this.renderImageSync(`![[${imagePath}]]`, alignContainer);
@@ -109,9 +110,7 @@ export class AlignmentPostProcessor {
 
 				// 创建对齐容器
 				const alignContainer = document.createElement('div');
-				alignContainer.className = `alignment-${alignment}`;
-				alignContainer.style.textAlign = alignment;
-				alignContainer.style.margin = '10px 0';
+				alignContainer.className = `alignment-block alignment-${alignment}`;
 
 				// 渲染内容 - 同步处理
 				this.renderImageSync(content, alignContainer);
@@ -184,8 +183,7 @@ export class AlignmentPostProcessor {
 				imgEl.src = img.src;
 			}
 
-			imgEl.style.maxWidth = '100%';
-			imgEl.style.height = 'auto';
+			imgEl.addClass('alignment-image');
 			container.appendChild(imgEl);
 		}
 	}

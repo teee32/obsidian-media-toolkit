@@ -1,5 +1,6 @@
 import { TFile, ItemView, WorkspaceLeaf, setIcon, Menu, MenuItem, Notice } from 'obsidian';
 import ImageManagerPlugin from '../main';
+import { DeleteConfirmModal, DeleteTarget } from './DeleteConfirmModal';
 import { formatFileSize, debounce } from '../utils/format';
 import { normalizeVaultPath } from '../utils/path';
 import { getMediaType, getFileExtension, getDocumentDisplayLabel } from '../utils/mediaTypes';
@@ -65,8 +66,9 @@ export class ImageLibraryView extends ItemView {
 		await this.refreshImages();
 	}
 
-	async onClose() {
+	onClose(): Promise<void> {
 		// 清理工作 - 事件监听会在 View 卸载时自动清理
+		return Promise.resolve();
 	}
 
 	async refreshImages() {
@@ -195,7 +197,7 @@ export class ImageLibraryView extends ItemView {
 				placeholder: this.plugin.t('searchPlaceholder'),
 				value: this.searchQuery
 			}
-		}) as HTMLInputElement;
+		});
 
 		// 搜索图标
 		const searchIcon = searchContainer.createDiv({ cls: 'search-icon' });
@@ -209,7 +211,7 @@ export class ImageLibraryView extends ItemView {
 				this.searchQuery = '';
 				this.currentPage = 1;
 				this.applySearch();
-				this.refreshImages();
+				void this.refreshImages();
 			});
 		}
 
@@ -217,7 +219,7 @@ export class ImageLibraryView extends ItemView {
 		const debouncedSearch = debounce(() => {
 			this.currentPage = 1;
 			this.applySearch();
-			this.refreshImages();
+			void this.refreshImages();
 		}, 300);
 
 		this.searchInput.addEventListener('input', (e) => {
@@ -250,38 +252,44 @@ export class ImageLibraryView extends ItemView {
 		setIcon(selectAllBtn, 'check-square');
 		selectAllBtn.addEventListener('click', () => {
 			this.filteredImages.forEach(img => this.selectedFiles.add(img.file.path));
-			this.refreshImages();
+			void this.refreshImages();
 		});
 
 		const deselectAllBtn = toolbar.createEl('button', { cls: 'toolbar-button' });
 		setIcon(deselectAllBtn, 'square');
 		deselectAllBtn.addEventListener('click', () => {
 			this.selectedFiles.clear();
-			this.refreshImages();
+			void this.refreshImages();
 		});
 
 		const deleteSelectedBtn = toolbar.createEl('button', { cls: 'toolbar-button danger' });
 		setIcon(deleteSelectedBtn, 'trash-2');
-		deleteSelectedBtn.addEventListener('click', () => this.deleteSelected());
+		deleteSelectedBtn.addEventListener('click', () => {
+			void this.deleteSelected();
+		});
 
 		// 整理按钮
 		const organizeBtn = toolbar.createEl('button', { cls: 'toolbar-button' });
 		setIcon(organizeBtn, 'folder-input');
 		organizeBtn.title = this.plugin.t('organizing');
-		organizeBtn.addEventListener('click', () => this.organizeSelected());
+		organizeBtn.addEventListener('click', () => {
+			void this.organizeSelected();
+		});
 
 		// 压缩按钮
 		const processBtn = toolbar.createEl('button', { cls: 'toolbar-button' });
 		setIcon(processBtn, 'image-down');
 		processBtn.title = this.plugin.t('processing');
-		processBtn.addEventListener('click', () => this.processSelected());
+		processBtn.addEventListener('click', () => {
+			void this.processSelected();
+		});
 
 		const exitSelectionBtn = toolbar.createEl('button', { cls: 'toolbar-button' });
 		setIcon(exitSelectionBtn, 'x');
 		exitSelectionBtn.addEventListener('click', () => {
 			this.isSelectionMode = false;
 			this.selectedFiles.clear();
-			this.refreshImages();
+			void this.refreshImages();
 		});
 	}
 
@@ -301,7 +309,7 @@ export class ImageLibraryView extends ItemView {
 		prevBtn.addEventListener('click', () => {
 			if (this.currentPage > 1) {
 				this.currentPage--;
-				this.refreshImages();
+				void this.refreshImages();
 			}
 		});
 
@@ -320,7 +328,7 @@ export class ImageLibraryView extends ItemView {
 		nextBtn.addEventListener('click', () => {
 			if (this.currentPage < totalPages) {
 				this.currentPage++;
-				this.refreshImages();
+				void this.refreshImages();
 			}
 		});
 
@@ -340,48 +348,53 @@ export class ImageLibraryView extends ItemView {
 			if (isNaN(page)) page = this.currentPage;
 			page = Math.max(1, Math.min(page, totalPages));
 			this.currentPage = page;
-			this.refreshImages();
+			void this.refreshImages();
 		});
 	}
 
 	/**
 	 * 删除选中的文件
 	 */
-	async deleteSelected() {
+	deleteSelected() {
 		if (this.selectedFiles.size === 0) {
 			new Notice(this.plugin.t('confirmDeleteSelected').replace('{count}', '0'));
 			return;
 		}
-
-		const confirmed = confirm(
-			this.plugin.t('confirmDeleteSelected').replace('{count}', String(this.selectedFiles.size))
+		const filesToDelete = this.filteredImages.filter(img =>
+			this.selectedFiles.has(img.file.path)
 		);
+		const deleteTargets: DeleteTarget[] = filesToDelete.map(img => ({
+			file: img.file,
+			path: img.path,
+			name: img.name,
+			size: img.size,
+			modified: img.modified
+		}));
 
-		if (confirmed) {
-			const filesToDelete = this.filteredImages.filter(img =>
-				this.selectedFiles.has(img.file.path)
-			);
+		new DeleteConfirmModal(
+			this.app,
+			this.plugin,
+			deleteTargets,
+			async () => {
+				const results = await Promise.all(
+					filesToDelete.map(img => this.plugin.safeDeleteFile(img.file))
+				);
 
-			// 使用 Promise.all 并发处理删除
-			const results = await Promise.all(
-				filesToDelete.map(img => this.plugin.safeDeleteFile(img.file))
-			);
+				const successCount = results.filter(r => r).length;
+				const failCount = results.filter(r => !r).length;
 
-			// 统计成功和失败的数量
-			const successCount = results.filter(r => r).length;
-			const failCount = results.filter(r => !r).length;
+				if (successCount > 0) {
+					new Notice(this.plugin.t('deletedFiles').replace('{count}', String(successCount)));
+				}
+				if (failCount > 0) {
+					new Notice(this.plugin.t('deleteFilesFailed').replace('{count}', String(failCount)), 3000);
+				}
 
-			if (successCount > 0) {
-				new Notice(this.plugin.t('deletedFiles').replace('{count}', String(successCount)));
+				this.selectedFiles.clear();
+				this.isSelectionMode = false;
+				await this.refreshImages();
 			}
-			if (failCount > 0) {
-				new Notice(this.plugin.t('deleteFilesFailed').replace('{count}', String(failCount)), 3000);
-			}
-
-			this.selectedFiles.clear();
-			this.isSelectionMode = false;
-			await this.refreshImages();
-		}
+		).open();
 	}
 
 	renderHeader() {
@@ -395,7 +408,9 @@ export class ImageLibraryView extends ItemView {
 		// 刷新按钮
 		const refreshBtn = header.createEl('button', { cls: 'refresh-button' });
 		setIcon(refreshBtn, 'refresh-cw');
-		refreshBtn.addEventListener('click', () => this.refreshImages());
+		refreshBtn.addEventListener('click', () => {
+			void this.refreshImages();
+		});
 
 		// 多选模式按钮
 		const selectBtn = header.createEl('button', { cls: 'refresh-button' });
@@ -405,7 +420,7 @@ export class ImageLibraryView extends ItemView {
 			if (!this.isSelectionMode) {
 				this.selectedFiles.clear();
 			}
-			this.refreshImages();
+			void this.refreshImages();
 		});
 		selectBtn.title = this.plugin.t('multiSelectMode');
 
@@ -422,23 +437,27 @@ export class ImageLibraryView extends ItemView {
 				option.setAttribute('selected', 'selected');
 			}
 		});
-		sortSelect.addEventListener('change', async (e) => {
-			const target = e.target as HTMLSelectElement;
-			this.plugin.settings.sortBy = target.value as 'name' | 'date' | 'size';
-			await this.plugin.saveSettings();
-			this.sortImages();
-			this.currentPage = 1; // 排序变化后重置到第一页
-			this.refreshImages();
+		sortSelect.addEventListener('change', (e) => {
+			void (async () => {
+				const target = e.target as HTMLSelectElement;
+				this.plugin.settings.sortBy = target.value as 'name' | 'date' | 'size';
+				await this.plugin.saveSettings();
+				this.sortImages();
+				this.currentPage = 1; // 排序变化后重置到第一页
+				await this.refreshImages();
+			})();
 		});
 
 		// 顺序切换
 		const orderBtn = header.createEl('button', { cls: 'order-button' });
-		orderBtn.addEventListener('click', async () => {
-			this.plugin.settings.sortOrder = this.plugin.settings.sortOrder === 'asc' ? 'desc' : 'asc';
-			await this.plugin.saveSettings();
-			this.sortImages();
-			this.currentPage = 1; // 排序顺序变化后重置到第一页
-			this.refreshImages();
+		orderBtn.addEventListener('click', () => {
+			void (async () => {
+				this.plugin.settings.sortOrder = this.plugin.settings.sortOrder === 'asc' ? 'desc' : 'asc';
+				await this.plugin.saveSettings();
+				this.sortImages();
+				this.currentPage = 1; // 排序顺序变化后重置到第一页
+				await this.refreshImages();
+			})();
 		});
 		setIcon(orderBtn, this.plugin.settings.sortOrder === 'asc' ? 'arrow-up' : 'arrow-down');
 	}
@@ -464,22 +483,15 @@ export class ImageLibraryView extends ItemView {
 	private renderThumbnailFallback(container: HTMLElement, iconName: string, label: string) {
 		container.empty();
 
-		const fallback = container.createDiv();
-		fallback.style.width = '100%';
-		fallback.style.height = '100%';
-		fallback.style.display = 'flex';
-		fallback.style.flexDirection = 'column';
-		fallback.style.alignItems = 'center';
-		fallback.style.justifyContent = 'center';
-		fallback.style.gap = '6px';
-		fallback.style.color = 'var(--text-muted)';
+		const fallback = container.createDiv({ cls: 'media-thumbnail-fallback' });
 
 		const iconEl = fallback.createDiv();
 		setIcon(iconEl, iconName);
 
-		const labelEl = fallback.createDiv({ text: label });
-		labelEl.style.fontSize = '0.75em';
-		labelEl.style.textTransform = 'uppercase';
+		fallback.createDiv({
+			cls: 'media-thumbnail-fallback-label',
+			text: label
+		});
 	}
 
 	private renderMediaThumbnail(container: HTMLElement, file: TFile, displayName: string) {
@@ -493,14 +505,11 @@ export class ImageLibraryView extends ItemView {
 		}
 
 		if (mediaType === 'video') {
-			const video = container.createEl('video');
+			const video = container.createEl('video', { cls: 'media-thumbnail-video' });
 			video.src = src;
 			video.muted = true;
 			video.preload = 'metadata';
 			video.playsInline = true;
-			video.style.width = '100%';
-			video.style.height = '100%';
-			video.style.objectFit = 'cover';
 			video.addEventListener('error', () => {
 				this.renderThumbnailFallback(container, 'video', 'VIDEO');
 			});
@@ -530,10 +539,12 @@ export class ImageLibraryView extends ItemView {
 
 		// 创建 img 元素（先用占位）
 		const img = container.createEl('img', {
+			cls: 'media-thumbnail-image',
 			attr: { alt: displayName }
 		});
-		img.style.opacity = '0';
-		img.style.transition = 'opacity 0.2s';
+		img.addEventListener('load', () => {
+			img.addClass('is-loaded');
+		});
 
 		img.addEventListener('error', () => {
 			container.empty();
@@ -546,7 +557,6 @@ export class ImageLibraryView extends ItemView {
 		// SVG 不需要缓存缩略图——直接使用原始路径
 		if (file.extension.toLowerCase() === 'svg') {
 			img.src = src;
-			img.style.opacity = '1';
 			return;
 		}
 
@@ -554,11 +564,9 @@ export class ImageLibraryView extends ItemView {
 		void cache.get(file.path, mtime).then(cachedUrl => {
 			if (cachedUrl) {
 				img.src = cachedUrl;
-				img.style.opacity = '1';
 			} else {
 				// 缓存未命中：先显示原图
 				img.src = src;
-				img.style.opacity = '1';
 
 				// 异步生成缩略图并存入缓存
 				void generateThumbnail(src, 300).then(({ blob, width, height }) => {
@@ -604,7 +612,7 @@ export class ImageLibraryView extends ItemView {
 				} else {
 					this.selectedFiles.add(image.file.path);
 				}
-				this.refreshImages();
+				void this.refreshImages();
 			} else {
 				// 在普通模式下，打开预览
 				this.plugin.openMediaPreview(image.file);
@@ -632,7 +640,7 @@ export class ImageLibraryView extends ItemView {
 			item.setTitle(this.plugin.t('openInNotes'))
 				.setIcon('search')
 				.onClick(() => {
-					this.plugin.openImageInNotes(file);
+					void this.plugin.openImageInNotes(file);
 				});
 		});
 
@@ -678,14 +686,18 @@ export class ImageLibraryView extends ItemView {
 			menu.addItem((item: MenuItem) => {
 				item.setTitle(this.plugin.t('organizing'))
 					.setIcon('folder-input')
-					.onClick(() => this.organizeFile(file));
+					.onClick(() => {
+						void this.organizeFile(file);
+					});
 			});
 
 			if (this.isProcessableImage(file)) {
 				menu.addItem((item: MenuItem) => {
 					item.setTitle(this.plugin.t('processing'))
 						.setIcon('image-down')
-						.onClick(() => this.processFile(file));
+						.onClick(() => {
+							void this.processFile(file);
+						});
 				});
 			}
 		}

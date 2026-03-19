@@ -5,7 +5,7 @@ import { TrashManagementView, VIEW_TYPE_TRASH_MANAGEMENT } from './view/TrashMan
 import { DuplicateDetectionView, VIEW_TYPE_DUPLICATE_DETECTION } from './view/DuplicateDetectionView';
 import { MediaPreviewModal } from './view/MediaPreviewModal';
 import { ImageManagerSettings, DEFAULT_SETTINGS, SettingsTab } from './settings';
-import { ImageAlignment, AlignmentType } from './utils/imageAlignment';
+import { ImageAlignment } from './utils/imageAlignment';
 import { AlignmentPostProcessor } from './utils/postProcessor';
 import { t as translate, getSystemLanguage, Language, Translations } from './utils/i18n';
 import { getEnabledExtensions, isMediaFile } from './utils/mediaTypes';
@@ -13,6 +13,19 @@ import { isPathSafe } from './utils/security';
 import { getFileNameFromPath, getParentPath, normalizeVaultPath, safeDecodeURIComponent } from './utils/path';
 import { ThumbnailCache } from './utils/thumbnailCache';
 import { MediaFileIndex } from './utils/fileWatcher';
+
+interface ElectronShell {
+	openPath?: (path: string) => Promise<string>;
+	openExternal?: (url: string) => Promise<void>;
+}
+
+interface ElectronModule {
+	shell?: ElectronShell;
+}
+
+interface ElectronWindow {
+	require?: (name: string) => ElectronModule;
+}
 
 export default class ImageManagerPlugin extends Plugin {
 	settings: ImageManagerSettings = DEFAULT_SETTINGS;
@@ -26,7 +39,7 @@ export default class ImageManagerPlugin extends Plugin {
 
 	// 性能：缩略图缓存 + 增量文件索引
 	thumbnailCache: ThumbnailCache = new ThumbnailCache();
-	fileIndex: MediaFileIndex = new MediaFileIndex(null as any);
+	fileIndex!: MediaFileIndex;
 	private indexedExtensionsKey: string = '';
 	private indexedTrashFolder: string = '';
 	private activePreviewModal: MediaPreviewModal | null = null;
@@ -55,10 +68,6 @@ export default class ImageManagerPlugin extends Plugin {
 		// 初始化性能基础设施
 		await this.initPerformanceInfra();
 
-		// 加载样式
-		this.removeManagedStyles();
-		await this.addStyle();
-
 		// 注册图片库视图
 		this.registerView(VIEW_TYPE_IMAGE_LIBRARY, (leaf) => new ImageLibraryView(leaf, this));
 
@@ -81,7 +90,7 @@ export default class ImageManagerPlugin extends Plugin {
 			name: this.t('cmdImageLibrary'),
 			checkCallback: (checking: boolean) => {
 				if (checking) return true;
-				this.openImageLibrary();
+				void this.openImageLibrary();
 			}
 		});
 
@@ -90,7 +99,7 @@ export default class ImageManagerPlugin extends Plugin {
 			name: this.t('cmdFindUnreferencedImages'),
 			checkCallback: (checking: boolean) => {
 				if (checking) return true;
-				this.findUnreferencedImages();
+				void this.findUnreferencedImages();
 			}
 		});
 
@@ -100,7 +109,7 @@ export default class ImageManagerPlugin extends Plugin {
 			name: this.t('cmdRefreshCache'),
 			checkCallback: (checking: boolean) => {
 				if (checking) return true;
-				this.refreshCache();
+				void this.refreshCache();
 			}
 		});
 
@@ -110,7 +119,7 @@ export default class ImageManagerPlugin extends Plugin {
 			name: this.t('cmdDuplicateDetection'),
 			checkCallback: (checking: boolean) => {
 				if (checking) return true;
-				this.openDuplicateDetection();
+				void this.openDuplicateDetection();
 			}
 		});
 
@@ -120,7 +129,7 @@ export default class ImageManagerPlugin extends Plugin {
 			name: this.t('cmdTrashManagement'),
 			checkCallback: (checking: boolean) => {
 				if (checking) return true;
-				this.openTrashManagement();
+				void this.openTrashManagement();
 			}
 		});
 
@@ -150,12 +159,9 @@ export default class ImageManagerPlugin extends Plugin {
 		});
 
 		// 注册编辑器上下文菜单
-		this.registerEvent(
-			// @ts-ignore - editor-context-menu event
-			this.app.workspace.on('editor-context-menu', (menu: any, editor: any) => {
-				this.addAlignmentMenuItems(menu, editor);
-			})
-		);
+		this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor) => {
+			this.addAlignmentMenuItems(menu, editor);
+		}));
 
 		// 添加设置标签页
 		this.addSettingTab(new SettingsTab(this.app, this));
@@ -164,7 +170,7 @@ export default class ImageManagerPlugin extends Plugin {
 		this.registerVaultEventListeners();
 
 		// 启动时执行隔离文件夹自动清理
-		this.autoCleanupTrashOnStartup();
+		void this.autoCleanupTrashOnStartup();
 	}
 
 	/**
@@ -426,7 +432,7 @@ export default class ImageManagerPlugin extends Plugin {
 				active: true
 			});
 		}
-		workspace.revealLeaf(leaf);
+		await workspace.revealLeaf(leaf);
 	}
 
 	/**
@@ -443,7 +449,9 @@ export default class ImageManagerPlugin extends Plugin {
 		if (this.activePreviewModal) {
 			try {
 				this.activePreviewModal.close();
-			} catch (_) {}
+			} catch (error) {
+				console.debug('关闭现有预览窗口失败:', error);
+			}
 			this.activePreviewModal = null;
 		}
 
@@ -464,23 +472,14 @@ export default class ImageManagerPlugin extends Plugin {
 		// 关闭缩略图缓存
 		this.thumbnailCache.close();
 		this.fileIndex.clear();
-
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_IMAGE_LIBRARY);
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_UNREFERENCED_IMAGES);
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_TRASH_MANAGEMENT);
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_DUPLICATE_DETECTION);
 		if (this.activePreviewModal) {
 			try {
 				this.activePreviewModal.close();
-			} catch (_) {}
+			} catch (error) {
+				console.debug('关闭媒体预览窗口失败:', error);
+			}
 			this.activePreviewModal = null;
 		}
-		this.removeManagedStyles();
-	}
-
-	private removeManagedStyles() {
-		document.getElementById('obsidian-media-toolkit-styles')?.remove();
-		document.getElementById('image-manager-styles')?.remove();
 	}
 
 	/**
@@ -496,1022 +495,7 @@ export default class ImageManagerPlugin extends Plugin {
 				active: true
 			});
 		}
-		workspace.revealLeaf(leaf);
-	}
-
-	// 加载样式文件
-	// 注意：优先使用 styles.css 中的样式，addStyle 作为后备方案
-	async addStyle() {
-		const loaded = await this.loadExternalStyles();
-		if (!loaded) {
-			this.addInlineStyle();
-		}
-	}
-
-	// 从外部样式文件加载
-	async loadExternalStyles(): Promise<boolean> {
-		// 检查是否已存在样式元素，避免重复添加
-		if (document.getElementById('obsidian-media-toolkit-styles')) {
-			return true;
-		}
-
-			const stylePaths = [
-				this.manifest.dir ? `${normalizeVaultPath(this.manifest.dir)}/styles.css` : '',
-				normalizeVaultPath(`${this.app.vault.configDir}/plugins/${this.manifest.id}/styles.css`),
-				'styles.css'
-			].filter((path, index, arr) => path && arr.indexOf(path) === index);
-
-		try {
-			for (const stylePath of stylePaths) {
-				if (!await this.app.vault.adapter.exists(stylePath)) {
-					continue;
-				}
-
-				const content = await this.app.vault.adapter.read(stylePath);
-				const sanitizedCss = content
-					// 阻止 expression() 等 JavaScript 执行
-					.replace(/expression\s*\(/gi, '/* blocked */(')
-					.replace(/javascript\s*:/gi, '/* blocked */:')
-					.replace(/vbscript\s*:/gi, '/* blocked */:')
-					// 阻止 url() 引用外部资源
-					.replace(/url\s*\([^)]*\)/gi, '/* url() blocked */')
-					// 阻止 @import 引入外部样式
-					.replace(/@import\s*[^;]+;/gi, '/* @import blocked */')
-					// 阻止事件处理器属性 (onclick, onerror, onload, onmouseover 等)
-					.replace(/\bon(click|error|load|mouseover|mouseout|focus|blur|change|submit|keydown|keyup)\s*=/gi, 'data-blocked-on$1=')
-					// 阻止 filter:url() 引用外部资源
-					.replace(/filter\s*:\s*url\s*\([^)]*\)/gi, '/* filter:url() blocked */')
-					// 阻止 behavior (IE 行为属性)
-					.replace(/behavior\s*:/gi, '/* behavior blocked */:')
-					// 阻止 -ms-behavior (IE 专有)
-					.replace(/-ms-behavior\s*:/gi, '/* -ms-behavior blocked */:')
-					// 阻止 binding (XUL 绑定)
-					.replace(/binding\s*:\s*url\s*\([^)]*\)/gi, '/* binding blocked */')
-					// 阻止 animation/transition 中的 url()
-					.replace(/(animation|transition)\s*:[^;]*url\s*\([^)]*\)/gi, '/* $1 url() blocked */');
-				const styleEl = document.createElement('style');
-				styleEl.id = 'obsidian-media-toolkit-styles';
-				styleEl.textContent = sanitizedCss;
-				document.head.appendChild(styleEl);
-				return true;
-			}
-		} catch (error) {
-			console.warn('加载外部样式文件失败，使用内联样式', error);
-		}
-
-		return false;
-	}
-
-	// 内联样式（后备方案）
-	addInlineStyle() {
-		// 检查是否已存在样式元素，避免重复添加
-		if (document.getElementById('image-manager-styles')) {
-			return;
-		}
-
-		const styleEl = document.createElement('style');
-		styleEl.id = 'image-manager-styles';
-		styleEl.textContent = `/* Obsidian Image Manager Plugin Styles */
-
-/* ===== 全局样式 ===== */
-.image-library-view,
-.unreferenced-images-view {
-	height: 100%;
-	overflow-y: auto;
-	padding: 16px;
-	box-sizing: border-box;
-}
-
-/* ===== 头部样式 ===== */
-.image-library-header,
-.unreferenced-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	margin-bottom: 20px;
-	padding-bottom: 16px;
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.image-library-header h2,
-.unreferenced-header h2 {
-	margin: 0;
-	font-size: 1.5em;
-	font-weight: 600;
-}
-
-.image-stats,
-.header-description {
-	margin-top: 4px;
-	color: var(--text-muted);
-	font-size: 0.9em;
-}
-
-.header-description {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-}
-
-/* ===== 按钮样式 ===== */
-.refresh-button,
-.action-button,
-.item-button {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: 8px;
-	border: none;
-	background: var(--background-secondary);
-	color: var(--text-normal);
-	border-radius: 4px;
-	cursor: pointer;
-	transition: background 0.2s, color 0.2s;
-}
-
-.refresh-button:hover,
-.action-button:hover,
-.item-button:hover {
-	background: var(--background-tertiary);
-}
-
-.refresh-button svg,
-.action-button svg,
-.item-button svg {
-	width: 16px;
-	height: 16px;
-}
-
-.action-button.danger,
-.item-button.danger {
-	color: var(--text-error);
-}
-
-.action-button.danger:hover,
-.item-button.danger:hover {
-	background: var(--background-modifier-error);
-	color: white;
-}
-
-.header-actions {
-	display: flex;
-	gap: 8px;
-}
-
-/* ===== 排序选择器 ===== */
-.sort-select {
-	padding: 6px 12px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	background: var(--background-secondary);
-	color: var(--text-normal);
-	font-size: 0.9em;
-	cursor: pointer;
-}
-
-.order-button {
-	padding: 6px 8px;
-	margin-left: 8px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	background: var(--background-secondary);
-	color: var(--text-normal);
-	cursor: pointer;
-}
-
-.order-button svg {
-	width: 16px;
-	height: 16px;
-}
-
-/* ===== 图片网格 ===== */
-.image-grid {
-	display: grid;
-	gap: 16px;
-	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-}
-
-.image-grid-small {
-	grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-}
-
-.image-grid-medium {
-	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-}
-
-.image-grid-large {
-	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-}
-
-/* ===== 图片项 ===== */
-.image-item {
-	display: flex;
-	flex-direction: column;
-	background: var(--background-secondary);
-	border-radius: 8px;
-	overflow: hidden;
-	transition: transform 0.2s, box-shadow 0.2s;
-	cursor: pointer;
-}
-
-.image-item:hover {
-	transform: translateY(-2px);
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.image-container {
-	position: relative;
-	width: 100%;
-	padding-top: 100%;
-	overflow: hidden;
-	background: var(--background-tertiary);
-}
-
-.image-container img {
-	position: absolute;
-	top: 0;
-	left: 0;
-	width: 100%;
-	height: 100%;
-	object-fit: cover;
-}
-
-.image-info {
-	padding: 8px;
-	border-top: 1px solid var(--background-modifier-border);
-}
-
-.image-name {
-	font-size: 0.85em;
-	font-weight: 500;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.image-size {
-	font-size: 0.75em;
-	color: var(--text-muted);
-	margin-top: 2px;
-}
-
-/* ===== 未引用图片列表 ===== */
-.stats-bar {
-	display: flex;
-	align-items: center;
-	gap: 16px;
-	padding: 12px 16px;
-	background: var(--background-secondary);
-	border-radius: 6px;
-	margin-bottom: 16px;
-}
-
-.stats-count {
-	font-weight: 600;
-	color: var(--text-warning);
-}
-
-.stats-size {
-	color: var(--text-muted);
-}
-
-.unreferenced-list {
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-}
-
-.unreferenced-item {
-	display: flex;
-	align-items: center;
-	gap: 16px;
-	padding: 12px;
-	background: var(--background-secondary);
-	border-radius: 8px;
-	transition: background 0.2s;
-}
-
-.unreferenced-item:hover {
-	background: var(--background-tertiary);
-}
-
-.item-thumbnail {
-	width: 60px;
-	height: 60px;
-	flex-shrink: 0;
-	border-radius: 4px;
-	overflow: hidden;
-	background: var(--background-tertiary);
-}
-
-.item-thumbnail img {
-	width: 100%;
-	height: 100%;
-	object-fit: cover;
-}
-
-.item-info {
-	flex: 1;
-	min-width: 0;
-}
-
-.item-name {
-	font-weight: 500;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.item-path {
-	font-size: 0.8em;
-	color: var(--text-muted);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	margin-top: 2px;
-}
-
-.item-size {
-	font-size: 0.85em;
-	color: var(--text-muted);
-	margin-top: 4px;
-}
-
-.item-actions {
-	display: flex;
-	gap: 8px;
-	flex-shrink: 0;
-}
-
-/* ===== 空状态 ===== */
-.empty-state,
-.loading-state,
-.success-state,
-.error-state {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	padding: 48px;
-	color: var(--text-muted);
-	text-align: center;
-}
-
-.empty-state::before {
-	content: '🖼️';
-	font-size: 48px;
-	margin-bottom: 16px;
-}
-
-.success-state::before {
-	content: '✅';
-	font-size: 48px;
-	margin-bottom: 16px;
-}
-
-.error-state::before {
-	content: '❌';
-	font-size: 48px;
-	margin-bottom: 16px;
-}
-
-/* 加载动画 */
-.spinner {
-	width: 32px;
-	height: 32px;
-	border: 3px solid var(--background-modifier-border);
-	border-top-color: var(--text-accent);
-	border-radius: 50%;
-	animation: spin 1s linear infinite;
-	margin-bottom: 16px;
-}
-
-@keyframes spin {
-	to {
-		transform: rotate(360deg);
-	}
-}
-
-/* ===== 设置页面样式 ===== */
-.settings-divider {
-	margin: 24px 0;
-	border: none;
-	border-top: 1px solid var(--background-modifier-border);
-}
-
-.settings-description {
-	color: var(--text-muted);
-	margin-bottom: 8px;
-}
-
-.settings-list {
-	margin: 0;
-	padding-left: 20px;
-	color: var(--text-muted);
-}
-
-.settings-list li {
-	margin-bottom: 4px;
-}
-
-/* ===== 搜索框样式 ===== */
-.search-container {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-bottom: 16px;
-	padding: 8px 12px;
-	background: var(--background-secondary);
-	border-radius: 6px;
-}
-
-.search-input {
-	flex: 1;
-	padding: 8px 12px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	background: var(--background-primary);
-	color: var(--text-normal);
-	font-size: 0.9em;
-}
-
-.search-input:focus {
-	outline: none;
-	border-color: var(--text-accent);
-}
-
-.search-icon {
-	color: var(--text-muted);
-}
-
-.search-results-count {
-	color: var(--text-muted);
-	font-size: 0.85em;
-}
-
-.clear-search {
-	padding: 4px;
-	border: none;
-	background: transparent;
-	color: var(--text-muted);
-	cursor: pointer;
-}
-
-.clear-search:hover {
-	color: var(--text-normal);
-}
-
-/* ===== 分页控件 ===== */
-.pagination {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 12px;
-	margin-top: 20px;
-	padding: 16px;
-	background: var(--background-secondary);
-	border-radius: 6px;
-}
-
-.page-button {
-	padding: 6px 12px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	background: var(--background-secondary);
-	color: var(--text-normal);
-	cursor: pointer;
-}
-
-.page-button:hover:not(:disabled) {
-	background: var(--background-tertiary);
-}
-
-.page-button:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
-}
-
-.page-info {
-	color: var(--text-muted);
-	font-size: 0.9em;
-}
-
-.page-jump-input {
-	width: 50px;
-	padding: 4px 8px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	background: var(--background-primary);
-	color: var(--text-normal);
-	text-align: center;
-}
-
-/* ===== 选择模式工具栏 ===== */
-.selection-toolbar {
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	margin-bottom: 16px;
-	padding: 12px;
-	background: var(--background-secondary);
-	border-radius: 6px;
-}
-
-.selection-count {
-	font-weight: 600;
-	color: var(--text-accent);
-}
-
-.toolbar-button {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: 8px;
-	border: none;
-	background: var(--background-tertiary);
-	color: var(--text-normal);
-	border-radius: 4px;
-	cursor: pointer;
-}
-
-.toolbar-button:hover {
-	background: var(--background-modifier-border);
-}
-
-.toolbar-button.danger {
-	color: var(--text-error);
-}
-
-.toolbar-button.danger:hover {
-	background: var(--background-modifier-error);
-	color: white;
-}
-
-/* ===== 图片选择框 ===== */
-.image-item {
-	position: relative;
-}
-
-.item-checkbox {
-	position: absolute;
-	top: 8px;
-	left: 8px;
-	z-index: 10;
-	width: 18px;
-	height: 18px;
-	cursor: pointer;
-}
-
-/* ===== 隔离文件管理视图 ===== */
-.trash-management-view {
-	height: 100%;
-	overflow-y: auto;
-	padding: 16px;
-	box-sizing: border-box;
-}
-
-.trash-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	margin-bottom: 20px;
-	padding-bottom: 16px;
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.trash-header h2 {
-	margin: 0;
-	font-size: 1.5em;
-	font-weight: 600;
-}
-
-.trash-list {
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-}
-
-.trash-item {
-	display: flex;
-	align-items: center;
-	gap: 16px;
-	padding: 12px;
-	background: var(--background-secondary);
-	border-radius: 8px;
-	transition: background 0.2s;
-}
-
-.trash-item:hover {
-	background: var(--background-tertiary);
-}
-
-.item-icon {
-	width: 40px;
-	height: 40px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	background: var(--background-tertiary);
-	border-radius: 4px;
-	color: var(--text-muted);
-}
-
-.item-original-path {
-	font-size: 0.8em;
-	color: var(--text-muted);
-	margin-top: 2px;
-}
-
-.item-date {
-	font-size: 0.8em;
-	color: var(--text-muted);
-	margin-top: 2px;
-}
-
-/* ===== 媒体预览 Modal ===== */
-.media-preview-modal {
-	max-width: 90vw;
-	max-height: 90vh;
-}
-
-.media-preview-modal .modal-content {
-	padding: 0;
-	background: var(--background-primary);
-}
-
-.preview-close {
-	position: absolute;
-	top: 10px;
-	right: 15px;
-	font-size: 24px;
-	color: var(--text-muted);
-	cursor: pointer;
-	z-index: 100;
-}
-
-.preview-close:hover {
-	color: var(--text-normal);
-}
-
-.preview-container {
-	position: relative;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	min-height: 400px;
-	max-height: 70vh;
-	overflow: auto;
-}
-
-.preview-image {
-	max-width: 100%;
-	max-height: 70vh;
-	object-fit: contain;
-}
-
-.preview-video,
-.preview-audio {
-	max-width: 100%;
-}
-
-.preview-pdf {
-	width: 100%;
-	height: 70vh;
-	border: none;
-}
-
-.preview-unsupported {
-	padding: 40px;
-	color: var(--text-muted);
-}
-
-.preview-nav {
-	position: absolute;
-	top: 50%;
-	transform: translateY(-50%);
-	left: 0;
-	right: 0;
-	display: flex;
-	justify-content: space-between;
-	padding: 0 20px;
-	pointer-events: none;
-}
-
-.nav-button {
-	pointer-events: auto;
-	font-size: 32px;
-	padding: 10px 15px;
-	border: none;
-	background: var(--background-secondary);
-	color: var(--text-normal);
-	border-radius: 4px;
-	cursor: pointer;
-}
-
-.nav-button:hover {
-	background: var(--background-tertiary);
-}
-
-.nav-info {
-	position: absolute;
-	bottom: 10px;
-	left: 50%;
-	transform: translateX(-50%);
-	padding: 4px 12px;
-	background: var(--background-secondary);
-	border-radius: 4px;
-	font-size: 0.9em;
-	color: var(--text-muted);
-}
-
-.preview-info-bar {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 12px 20px;
-	background: var(--background-secondary);
-	border-top: 1px solid var(--background-modifier-border);
-}
-
-.info-name {
-	font-weight: 500;
-}
-
-.info-actions {
-	display: flex;
-	gap: 8px;
-}
-
-.info-actions button {
-	padding: 4px 8px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	background: transparent;
-	color: var(--text-normal);
-	cursor: pointer;
-}
-
-.info-actions button:hover {
-	background: var(--background-tertiary);
-}
-
-/* ===== 重复检测（后备样式） ===== */
-.duplicate-empty-state {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	gap: 16px;
-	padding: 48px 24px;
-	color: var(--text-muted);
-	text-align: center;
-}
-
-.duplicate-empty-action {
-	margin-top: 8px;
-}
-
-.duplicate-scan-progress {
-	padding: 20px;
-	text-align: center;
-}
-
-.duplicate-progress-bar {
-	height: 8px;
-	background: var(--background-modifier-border);
-	border-radius: 4px;
-	overflow: hidden;
-	margin: 16px 0;
-}
-
-.duplicate-progress-fill {
-	height: 100%;
-	background: var(--interactive-accent);
-	border-radius: 4px;
-	transition: width 0.3s ease;
-}
-
-.duplicate-progress-text {
-	font-size: 0.9em;
-	color: var(--text-muted);
-}
-
-.duplicate-detection-view {
-	height: 100%;
-	overflow-y: auto;
-	padding: 16px;
-	box-sizing: border-box;
-}
-
-.duplicate-header {
-	margin-bottom: 16px;
-	padding-bottom: 12px;
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.duplicate-header-description {
-	margin-top: 4px;
-	color: var(--text-muted);
-	font-size: 0.9em;
-}
-
-.duplicate-header-actions {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	align-items: center;
-	margin-top: 8px;
-}
-
-.duplicate-action-button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: 4px;
-	padding: 8px 12px;
-	border: none;
-	background: var(--background-secondary);
-	color: var(--text-normal);
-	border-radius: 6px;
-	cursor: pointer;
-	transition: background 0.2s, color 0.2s, opacity 0.2s;
-}
-
-.duplicate-action-button:hover:not(:disabled) {
-	background: var(--background-tertiary);
-}
-
-.duplicate-action-button:disabled {
-	opacity: 0.6;
-	cursor: wait;
-}
-
-.duplicate-action-button-primary {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-}
-
-.duplicate-action-button-primary:hover:not(:disabled) {
-	background: var(--interactive-accent-hover);
-}
-
-.duplicate-threshold-label {
-	font-size: 0.85em;
-	color: var(--text-muted);
-}
-
-.duplicate-stats-bar {
-	display: flex;
-	align-items: center;
-	gap: 16px;
-	padding: 12px 16px;
-	background: var(--background-secondary);
-	border-radius: 6px;
-	margin-bottom: 16px;
-}
-
-.duplicate-stats-count {
-	font-weight: 600;
-	color: var(--text-warning);
-}
-
-.duplicate-group {
-	margin-bottom: 16px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 8px;
-	overflow: hidden;
-}
-
-.duplicate-group-header {
-	display: flex;
-	justify-content: space-between;
-	padding: 8px 12px;
-	background: var(--background-secondary);
-	font-weight: 600;
-}
-
-.duplicate-group-count {
-	color: var(--text-muted);
-	font-weight: normal;
-	font-size: 0.85em;
-}
-
-.duplicate-group-file {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	padding: 8px 12px;
-	border-top: 1px solid var(--background-modifier-border);
-	position: relative;
-}
-
-.duplicate-keep-suggestion {
-	background: rgba(0, 200, 83, 0.05);
-}
-
-.duplicate-file-suggestion {
-	background: rgba(255, 152, 0, 0.05);
-}
-
-.duplicate-file-thumbnail {
-	width: 60px;
-	height: 60px;
-	border-radius: 6px;
-	overflow: hidden;
-	flex-shrink: 0;
-}
-
-.duplicate-file-thumbnail img {
-	width: 100%;
-	height: 100%;
-	object-fit: cover;
-}
-
-.duplicate-file-info {
-	flex: 1;
-	min-width: 0;
-}
-
-.duplicate-file-name,
-.duplicate-file-path {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.duplicate-file-name {
-	font-weight: 500;
-}
-
-.duplicate-file-path,
-.duplicate-file-meta {
-	font-size: 0.8em;
-	color: var(--text-muted);
-}
-
-.duplicate-similarity-badge {
-	display: inline-block;
-	padding: 1px 6px;
-	border-radius: 8px;
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-	font-size: 0.75em;
-	font-weight: 600;
-}
-
-.duplicate-keep-badge {
-	position: absolute;
-	top: 8px;
-	right: 12px;
-	font-size: 0.85em;
-}
-
-.duplicate-quarantine-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	padding: 4px 10px;
-	border-radius: 6px;
-	font-size: 0.8em;
-	cursor: pointer;
-	background: rgba(255, 152, 0, 0.15);
-	color: var(--color-orange, #ff9800);
-	border: none;
-	position: absolute;
-	top: 8px;
-	right: 12px;
-}
-
-.duplicate-quarantine-btn:hover {
-	background: rgba(255, 152, 0, 0.3);
-}
-
-/* ===== 响应式设计 ===== */
-@media (max-width: 768px) {
-	.image-library-header,
-	.unreferenced-header {
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 12px;
-	}
-
-	.header-actions {
-		width: 100%;
-		justify-content: flex-end;
-	}
-
-	.unreferenced-item {
-		flex-direction: column;
-		align-items: flex-start;
-	}
-
-	.item-actions {
-		width: 100%;
-		justify-content: flex-end;
-		margin-top: 8px;
-	}
-}`;
-		document.head.appendChild(styleEl);
+		await workspace.revealLeaf(leaf);
 	}
 
 	async loadSettings() {
@@ -1653,7 +637,7 @@ export default class ImageManagerPlugin extends Plugin {
 				active: true
 			});
 		}
-		workspace.revealLeaf(leaf);
+		await workspace.revealLeaf(leaf);
 	}
 
 	async findUnreferencedImages() {
@@ -1667,11 +651,11 @@ export default class ImageManagerPlugin extends Plugin {
 				active: true
 			});
 		}
-		workspace.revealLeaf(leaf);
+		await workspace.revealLeaf(leaf);
 	}
 
 	// 获取所有媒体文件（图片、音视频、文档）
-	async getAllImageFiles(): Promise<TFile[]> {
+	getAllImageFiles(): TFile[] {
 		// 从设置中获取启用的扩展名
 		const enabledExtensions = getEnabledExtensions({
 			enableImages: this.settings.enableImages,
@@ -1693,7 +677,7 @@ export default class ImageManagerPlugin extends Plugin {
 	}
 
 	// 获取所有图片文件（保留兼容性）
-	async getAllMediaFiles(): Promise<TFile[]> {
+	getAllMediaFiles(): TFile[] {
 		return this.getAllImageFiles();
 	}
 
@@ -1979,7 +963,7 @@ export default class ImageManagerPlugin extends Plugin {
 			: '';
 
 		try {
-			const electronRequire = (window as unknown as { require?: (name: string) => any }).require;
+			const electronRequire = (window as unknown as ElectronWindow).require;
 			if (typeof electronRequire === 'function') {
 				const electron = electronRequire('electron');
 				const shell = electron?.shell;

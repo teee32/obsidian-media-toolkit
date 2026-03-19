@@ -50,8 +50,9 @@ export class UnreferencedImagesView extends ItemView {
 		}
 	}
 
-	async onClose() {
+	onClose(): Promise<void> {
 		// 清理工作
+		return Promise.resolve();
 	}
 
 	async scanUnreferencedImages() {
@@ -84,7 +85,7 @@ export class UnreferencedImagesView extends ItemView {
 			this.unreferencedImages.sort((a, b) => b.size - a.size);
 
 			// 渲染视图
-			await this.renderView();
+			this.renderView();
 		} catch (error) {
 			console.error('扫描图片时出错:', error);
 			this.contentEl.createDiv({
@@ -96,7 +97,7 @@ export class UnreferencedImagesView extends ItemView {
 		}
 	}
 
-	async renderView() {
+	renderView() {
 		// 如果视图已关闭或 contentEl 不可用，直接返回
 		if (!this.contentEl) {
 			return;
@@ -147,7 +148,9 @@ export class UnreferencedImagesView extends ItemView {
 		// 重新扫描按钮
 		const refreshBtn = header.createEl('button', { cls: 'refresh-button' });
 		setIcon(refreshBtn, 'refresh-cw');
-		refreshBtn.addEventListener('click', () => this.scanUnreferencedImages());
+		refreshBtn.addEventListener('click', () => {
+			void this.scanUnreferencedImages();
+		});
 
 		// 批量操作按钮
 		const actions = header.createDiv({ cls: 'header-actions' });
@@ -164,22 +167,15 @@ export class UnreferencedImagesView extends ItemView {
 	private renderThumbnailFallback(container: HTMLElement, iconName: string, label: string) {
 		container.empty();
 
-		const fallback = container.createDiv();
-		fallback.style.width = '100%';
-		fallback.style.height = '100%';
-		fallback.style.display = 'flex';
-		fallback.style.flexDirection = 'column';
-		fallback.style.alignItems = 'center';
-		fallback.style.justifyContent = 'center';
-		fallback.style.gap = '6px';
-		fallback.style.color = 'var(--text-muted)';
+		const fallback = container.createDiv({ cls: 'media-thumbnail-fallback' });
 
 		const iconEl = fallback.createDiv();
 		setIcon(iconEl, iconName);
 
-		const labelEl = fallback.createDiv({ text: label });
-		labelEl.style.fontSize = '0.75em';
-		labelEl.style.textTransform = 'uppercase';
+		fallback.createDiv({
+			cls: 'media-thumbnail-fallback-label',
+			text: label
+		});
 	}
 
 	private renderMediaThumbnail(container: HTMLElement, file: TFile, displayName: string) {
@@ -205,14 +201,11 @@ export class UnreferencedImagesView extends ItemView {
 		}
 
 		if (mediaType === 'video') {
-			const video = container.createEl('video');
+			const video = container.createEl('video', { cls: 'media-thumbnail-video' });
 			video.src = src;
 			video.muted = true;
 			video.preload = 'metadata';
 			video.playsInline = true;
-			video.style.width = '100%';
-			video.style.height = '100%';
-			video.style.objectFit = 'cover';
 			video.addEventListener('error', () => {
 				this.renderThumbnailFallback(container, 'video', 'VIDEO');
 			});
@@ -252,7 +245,7 @@ export class UnreferencedImagesView extends ItemView {
 		const findBtn = actions.createEl('button', { cls: 'item-button' });
 		setIcon(findBtn, 'search');
 		findBtn.addEventListener('click', () => {
-			this.plugin.openImageInNotes(image.file);
+			void this.plugin.openImageInNotes(image.file);
 		});
 
 		// 复制路径按钮
@@ -288,7 +281,7 @@ export class UnreferencedImagesView extends ItemView {
 			item.setTitle(this.plugin.t('openInNotes'))
 				.setIcon('search')
 				.onClick(() => {
-					this.plugin.openImageInNotes(file);
+					void this.plugin.openImageInNotes(file);
 				});
 		});
 
@@ -342,7 +335,7 @@ export class UnreferencedImagesView extends ItemView {
 		menu.showAtPosition({ x: event.clientX, y: event.clientY });
 	}
 
-	async confirmDelete(image: UnreferencedImage) {
+	confirmDelete(image: UnreferencedImage) {
 		new DeleteConfirmModal(
 			this.app,
 			this.plugin,
@@ -355,13 +348,13 @@ export class UnreferencedImagesView extends ItemView {
 						img => img.file.path !== image.file.path
 					);
 					// 重新渲染
-					await this.renderView();
+					this.renderView();
 				}
 			}
 		).open();
 	}
 
-	async confirmDeleteAll() {
+	confirmDeleteAll() {
 		if (this.unreferencedImages.length === 0) {
 			new Notice(this.plugin.t('noFilesToDelete'));
 			return;

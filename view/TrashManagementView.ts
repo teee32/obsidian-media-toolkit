@@ -58,8 +58,9 @@ export class TrashManagementView extends ItemView {
 		await this.loadTrashItems();
 	}
 
-	async onClose() {
+	onClose(): Promise<void> {
 		// 清理工作
+		return Promise.resolve();
 	}
 
 	/**
@@ -79,14 +80,14 @@ export class TrashManagementView extends ItemView {
 			const trashPath = normalizeVaultPath(this.plugin.settings.trashFolder);
 			if (!trashPath || !isPathSafe(trashPath)) {
 				this.trashItems = [];
-				await this.renderView();
+				this.renderView();
 				return;
 			}
 
 			const trashFolder = this.plugin.app.vault.getAbstractFileByPath(trashPath);
 			if (!trashFolder || !(trashFolder instanceof TFolder)) {
 				this.trashItems = [];
-				await this.renderView();
+				this.renderView();
 				return;
 			}
 
@@ -118,7 +119,7 @@ export class TrashManagementView extends ItemView {
 			}
 
 			this.trashItems.sort((a, b) => b.modified - a.modified);
-			await this.renderView();
+			this.renderView();
 		} catch (error) {
 			console.error('加载隔离文件失败:', error);
 			this.contentEl.createDiv({
@@ -216,7 +217,7 @@ export class TrashManagementView extends ItemView {
 	/**
 	 * 渲染视图
 	 */
-	async renderView() {
+	renderView() {
 		if (!this.contentEl) return;
 		this.contentEl.empty();
 
@@ -261,7 +262,9 @@ export class TrashManagementView extends ItemView {
 		// 刷新按钮
 		const refreshBtn = actions.createEl('button', { cls: 'refresh-button' });
 		setIcon(refreshBtn, 'refresh-cw');
-		refreshBtn.addEventListener('click', () => this.loadTrashItems());
+		refreshBtn.addEventListener('click', () => {
+			void this.loadTrashItems();
+		});
 		refreshBtn.title = this.plugin.t('refresh');
 
 		// 安全扫描按钮
@@ -269,13 +272,17 @@ export class TrashManagementView extends ItemView {
 		setIcon(scanBtn, 'shield-check');
 		scanBtn.createSpan({ text: ` ${this.plugin.t('safeScan')}` });
 		scanBtn.disabled = !this.plugin.settings.safeScanEnabled;
-		scanBtn.addEventListener('click', () => this.runSafeScan());
+		scanBtn.addEventListener('click', () => {
+			void this.runSafeScan();
+		});
 		scanBtn.title = this.plugin.t('safeScanDesc');
 
 		// 清空隔离文件夹按钮
 		const clearAllBtn = actions.createEl('button', { cls: 'action-button danger' });
 		setIcon(clearAllBtn, 'trash-2');
-		clearAllBtn.addEventListener('click', () => this.confirmClearAll());
+		clearAllBtn.addEventListener('click', () => {
+			void this.confirmClearAll();
+		});
 		clearAllBtn.title = this.plugin.t('clearTrashTooltip');
 	}
 
@@ -345,13 +352,17 @@ export class TrashManagementView extends ItemView {
 		const batchRestoreBtn = toolbar.createEl('button', { cls: 'toolbar-btn success' });
 		setIcon(batchRestoreBtn, 'rotate-ccw');
 		batchRestoreBtn.createSpan({ text: ` ${this.plugin.t('batchRestore')}` });
-		batchRestoreBtn.addEventListener('click', () => this.batchRestore());
+		batchRestoreBtn.addEventListener('click', () => {
+			void this.batchRestore();
+		});
 
 		// 批量删除
 		const batchDeleteBtn = toolbar.createEl('button', { cls: 'toolbar-btn danger' });
 		setIcon(batchDeleteBtn, 'trash-2');
 		batchDeleteBtn.createSpan({ text: ` ${this.plugin.t('batchDelete')}` });
-		batchDeleteBtn.addEventListener('click', () => this.batchDelete());
+		batchDeleteBtn.addEventListener('click', () => {
+			void this.batchDelete();
+		});
 	}
 
 	/**
@@ -364,7 +375,7 @@ export class TrashManagementView extends ItemView {
 		const checkbox = itemEl.createEl('input', {
 			type: 'checkbox',
 			cls: 'item-checkbox'
-		}) as HTMLInputElement;
+		});
 		checkbox.checked = item.selected;
 		checkbox.addEventListener('change', () => {
 			item.selected = checkbox.checked;
@@ -384,22 +395,10 @@ export class TrashManagementView extends ItemView {
 		// 文件信息
 		const info = itemEl.createDiv({ cls: 'item-info' });
 		info.createDiv({ cls: 'item-name', text: item.name });
-		const typeBadge = info.createSpan({
+		info.createSpan({
 			cls: 'item-type-badge',
 			text: this.getTypeLabel(item.name)
 		});
-		typeBadge.style.display = 'inline-flex';
-		typeBadge.style.alignItems = 'center';
-		typeBadge.style.width = 'fit-content';
-		typeBadge.style.padding = '2px 8px';
-		typeBadge.style.marginTop = '4px';
-		typeBadge.style.borderRadius = '999px';
-		typeBadge.style.fontSize = '0.75em';
-		typeBadge.style.fontWeight = '600';
-		typeBadge.style.letterSpacing = '0.04em';
-		typeBadge.style.border = '1px solid var(--background-modifier-border)';
-		typeBadge.style.color = 'var(--text-muted)';
-		typeBadge.style.background = 'var(--background-secondary)';
 
 		if (item.originalPath) {
 			info.createDiv({
@@ -416,7 +415,7 @@ export class TrashManagementView extends ItemView {
 		});
 
 		// 引用次数徽章
-		const refBadge = info.createSpan({
+		info.createSpan({
 			cls: `ref-badge ${item.referenceCount > 0 ? 'ref-active' : 'ref-zero'}`,
 			text: this.plugin.t('referencedBy', { count: item.referenceCount })
 		});
@@ -426,12 +425,16 @@ export class TrashManagementView extends ItemView {
 
 		const restoreBtn = actions.createEl('button', { cls: 'item-button success' });
 		setIcon(restoreBtn, 'rotate-ccw');
-		restoreBtn.addEventListener('click', () => this.restoreFile(item));
+		restoreBtn.addEventListener('click', () => {
+			void this.restoreFile(item);
+		});
 		restoreBtn.title = this.plugin.t('restoreTooltip');
 
 		const deleteBtn = actions.createEl('button', { cls: 'item-button danger' });
 		setIcon(deleteBtn, 'trash-2');
-		deleteBtn.addEventListener('click', () => this.confirmDelete(item));
+		deleteBtn.addEventListener('click', () => {
+			void this.confirmDelete(item);
+		});
 		deleteBtn.title = this.plugin.t('permanentDeleteTooltip');
 
 		// 右键菜单
@@ -468,24 +471,15 @@ export class TrashManagementView extends ItemView {
 	private renderThumbnailFallback(container: HTMLElement, iconName: string, label: string) {
 		container.empty();
 
-		const fallback = container.createDiv();
-		fallback.style.width = '100%';
-		fallback.style.height = '100%';
-		fallback.style.display = 'flex';
-		fallback.style.flexDirection = 'column';
-		fallback.style.alignItems = 'center';
-		fallback.style.justifyContent = 'center';
-		fallback.style.gap = '6px';
-		fallback.style.color = 'var(--text-muted)';
+		const fallback = container.createDiv({ cls: 'media-thumbnail-fallback' });
 
 		const icon = fallback.createDiv({ cls: 'thumb-icon' });
 		setIcon(icon, iconName);
 
-		const text = fallback.createDiv({ text: label });
-		text.style.fontSize = '0.72em';
-		text.style.fontWeight = '600';
-		text.style.letterSpacing = '0.04em';
-		text.style.textTransform = 'uppercase';
+		fallback.createDiv({
+			cls: 'media-thumbnail-fallback-label media-thumbnail-fallback-label-strong',
+			text: label
+		});
 	}
 
 	private getTypeLabel(fileName: string): string {
@@ -658,13 +652,17 @@ export class TrashManagementView extends ItemView {
 		menu.addItem((menuItem: MenuItem) => {
 			menuItem.setTitle(this.plugin.t('restore'))
 				.setIcon('rotate-ccw')
-				.onClick(() => this.restoreFile(trashItem));
+				.onClick(() => {
+					void this.restoreFile(trashItem);
+				});
 		});
 
 		menu.addItem((menuItem: MenuItem) => {
 			menuItem.setTitle(this.plugin.t('permanentDelete'))
 				.setIcon('trash-2')
-				.onClick(() => this.confirmDelete(trashItem));
+				.onClick(() => {
+					void this.confirmDelete(trashItem);
+				});
 		});
 
 		menu.addSeparator();
@@ -726,7 +724,7 @@ export class TrashManagementView extends ItemView {
 			if (!restored) return;
 
 			this.trashItems = this.trashItems.filter(i => i.file.path !== item.file.path);
-			await this.renderView();
+			this.renderView();
 		} catch (error) {
 			console.error('恢复文件失败:', error);
 			new Notice(this.plugin.t('restoreFailed').replace('{message}', (error as Error).message));
@@ -787,7 +785,7 @@ export class TrashManagementView extends ItemView {
 				await this.plugin.app.fileManager.trashFile(item.file);
 				new Notice(this.plugin.t('fileDeleted').replace('{name}', item.name));
 				this.trashItems = this.trashItems.filter(i => i.file.path !== item.file.path);
-				await this.renderView();
+				this.renderView();
 			} catch (error) {
 				console.error('删除文件失败:', error);
 				new Notice(this.plugin.t('deleteFailed'));

@@ -42,25 +42,23 @@ export class DuplicateDetectionView extends ItemView {
 			console.error('DuplicateDetectionView: contentEl not ready');
 			return;
 		}
-		// Ensure styles exist even if external stylesheet was removed or not loaded.
-		this.ensureStyles();
 		// Reset scan state on reopen to avoid stale "isScanning" blocking the UI.
 		this.isScanning = false;
 		this.scanProgress = { current: 0, total: 0 };
 		this.contentEl.addClass('duplicate-detection-view');
-		await this.renderView();
+		this.renderView();
 	}
 
-	async onClose() {
+	onClose(): Promise<void> {
 		this.isScanning = false;
+		return Promise.resolve();
 	}
 
 	/**
 	 * 渲染视图
 	 */
-	async renderView() {
+	renderView() {
 		if (!this.contentEl) return;
-		this.ensureStyles();
 		this.contentEl.empty();
 
 		this.renderHeader();
@@ -96,7 +94,9 @@ export class DuplicateDetectionView extends ItemView {
 		const cleanAllBtn = statsBar.createEl('button', { cls: 'duplicate-action-button' });
 		setIcon(cleanAllBtn, 'broom');
 		cleanAllBtn.createSpan({ text: ` ${this.plugin.t('quarantineAllDuplicates')}` });
-		cleanAllBtn.addEventListener('click', () => this.quarantineAllDuplicates());
+		cleanAllBtn.addEventListener('click', () => {
+			void this.quarantineAllDuplicates();
+		});
 
 		// 渲染重复组
 		const groupsContainer = this.contentEl.createDiv({ cls: 'duplicate-groups' });
@@ -152,7 +152,7 @@ export class DuplicateDetectionView extends ItemView {
 		const percent = this.scanProgress.total > 0
 			? Math.round((this.scanProgress.current / this.scanProgress.total) * 100)
 			: 0;
-		progressFill.style.width = `${percent}%`;
+		progressFill.setCssProps({ width: `${percent}%` });
 
 		progressContainer.createDiv({
 			cls: 'duplicate-progress-text',
@@ -214,13 +214,13 @@ export class DuplicateDetectionView extends ItemView {
 					}
 				}
 			} else {
-				const allFiles = await this.plugin.getAllImageFiles();
+				const allFiles = this.plugin.getAllImageFiles();
 				imageFiles.push(...allFiles.filter(f => getMediaType(f.name) === 'image'));
 			}
 
 			this.scanProgress = { current: 0, total: imageFiles.length };
 			this.lastProgressAt = Date.now();
-			await this.renderView();
+			this.renderView();
 
 			// 分批计算哈希
 			const hashMap = new Map<string, ImageHash>();
@@ -247,7 +247,7 @@ export class DuplicateDetectionView extends ItemView {
 				const progressText = this.contentEl.querySelector('.duplicate-progress-text') as HTMLElement;
 				if (progressFill && progressText) {
 					const percent = Math.round((this.scanProgress.current / this.scanProgress.total) * 100);
-					progressFill.style.width = `${percent}%`;
+					progressFill.setCssProps({ width: `${percent}%` });
 					progressText.textContent = this.plugin.t('scanProgress', {
 						current: this.scanProgress.current,
 						total: this.scanProgress.total
@@ -284,16 +284,8 @@ export class DuplicateDetectionView extends ItemView {
 			new Notice(this.plugin.t('scanError'));
 		} finally {
 			this.isScanning = false;
-			await this.renderView();
+			this.renderView();
 		}
-	}
-
-	private ensureStyles() {
-		if (document.getElementById('obsidian-media-toolkit-styles') ||
-			document.getElementById('image-manager-styles')) {
-			return;
-		}
-		void this.plugin.addStyle();
 	}
 
 	/**
@@ -360,32 +352,34 @@ export class DuplicateDetectionView extends ItemView {
 				const quarantineBtn = fileEl.createEl('button', { cls: 'duplicate-quarantine-btn' });
 				setIcon(quarantineBtn, 'archive');
 				quarantineBtn.createSpan({ text: ` ${this.plugin.t('quarantine')}` });
-				quarantineBtn.addEventListener('click', async () => {
-					const keepFile = group.files[0];
-					if (!keepFile || keepFile.path === file.path) {
-						return;
-					}
-
-					quarantineBtn.disabled = true;
-					try {
-						await updateLinksInVault(this.app, file.path, keepFile.path);
-						const result = await this.plugin.safeDeleteFile(file);
-						if (!result) {
-							quarantineBtn.disabled = false;
+				quarantineBtn.addEventListener('click', () => {
+					void (async () => {
+						const keepFile = group.files[0];
+						if (!keepFile || keepFile.path === file.path) {
 							return;
 						}
 
-						group.files = group.files.filter(entry => entry.path !== file.path);
-						if (group.files.length <= 1) {
-							const idx = this.duplicateGroups.indexOf(group);
-							if (idx >= 0) this.duplicateGroups.splice(idx, 1);
+						quarantineBtn.disabled = true;
+						try {
+							await updateLinksInVault(this.app, file.path, keepFile.path);
+							const result = await this.plugin.safeDeleteFile(file);
+							if (!result) {
+								quarantineBtn.disabled = false;
+								return;
+							}
+
+							group.files = group.files.filter(entry => entry.path !== file.path);
+							if (group.files.length <= 1) {
+								const idx = this.duplicateGroups.indexOf(group);
+								if (idx >= 0) this.duplicateGroups.splice(idx, 1);
+							}
+							this.renderView();
+						} catch (error) {
+							console.error('单个重复隔离失败:', error);
+							new Notice(this.plugin.t('operationFailed', { name: file.name }));
+							quarantineBtn.disabled = false;
 						}
-						await this.renderView();
-					} catch (error) {
-						console.error('单个重复隔离失败:', error);
-						new Notice(this.plugin.t('operationFailed', { name: file.name }));
-						quarantineBtn.disabled = false;
-					}
+					})();
 				});
 			}
 		}
@@ -415,6 +409,6 @@ export class DuplicateDetectionView extends ItemView {
 
 		new Notice(this.plugin.t('duplicatesQuarantined', { count: totalQuarantined }));
 		this.duplicateGroups = [];
-		await this.renderView();
+		this.renderView();
 	}
 }

@@ -3,7 +3,7 @@
  * 维护内存中的媒体文件索引，避免每次视图刷新全量遍历 Vault
  */
 
-import { TFile, TAbstractFile, Vault, Events } from 'obsidian';
+import { TFile, TAbstractFile, Vault } from 'obsidian';
 import { isMediaFile } from './mediaTypes';
 import { ThumbnailCache } from './thumbnailCache';
 
@@ -84,7 +84,7 @@ export class MediaFileIndex {
 	/**
 	 * 首次全量扫描，建立索引
 	 */
-	async fullScan(): Promise<void> {
+	fullScan(): void {
 		this.index.clear();
 
 		const allFiles = this.vault.getFiles();
@@ -101,15 +101,15 @@ export class MediaFileIndex {
 	 * 文件变化事件处理器（由 Vault 事件回调调用）
 	 */
 	onFileCreated(file: TAbstractFile): void {
-		if (!this.shouldIndex(file)) return;
-		const entry = this.toEntry(file as TFile);
+		if (!(file instanceof TFile) || !this.shouldIndex(file)) return;
+		const entry = this.toEntry(file);
 		this.index.set(entry.path, entry);
 		this.notifyListeners('create', entry);
 	}
 
 	onFileModified(file: TAbstractFile): void {
-		if (!this.shouldIndex(file)) return;
-		const entry = this.toEntry(file as TFile);
+		if (!(file instanceof TFile) || !this.shouldIndex(file)) return;
+		const entry = this.toEntry(file);
 		this.index.set(entry.path, entry);
 		this.notifyListeners('modify', entry);
 	}
@@ -138,8 +138,8 @@ export class MediaFileIndex {
 		}
 
 		// 如果新路径仍然是媒体文件，添加到索引
-		if (this.shouldIndex(file)) {
-			const newEntry = this.toEntry(file as TFile);
+		if (file instanceof TFile && this.shouldIndex(file)) {
+			const newEntry = this.toEntry(file);
 			this.index.set(newEntry.path, newEntry);
 
 			// 迁移缩略图缓存

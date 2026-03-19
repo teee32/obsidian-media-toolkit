@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.20] - 2026-03-19
+
+### Changed
+- 设置页标题统一改为使用 Obsidian 官方 `Setting(...).setHeading()` 写法，并调整示例占位文本大小写
+- 删除确认流程统一改为插件内 Modal，不再依赖浏览器原生 `confirm()`
+- 统一将媒体缩略图回退、类型标签、删除确认布局等界面样式迁移到 `styles.css`
+
+### Fixed
+- 移除运行时动态注入 `<style>` 的后备逻辑，避免社区审核拦截
+- 移除插件卸载时主动 `detachLeavesOfType()` 的行为，遵循 Obsidian 视图生命周期要求
+- 清理社区审核指出的 `any`、未显式处理 Promise、空 `catch`、不安全类型断言和条件赋值问题
+- 对齐重复检测、媒体库、未引用视图和隔离管理中的按钮回调、缩略图状态和删除/恢复流程实现，降低 review bot 报警
+
+---
+
 ## [1.1.19] - 2026-03-19
 
 ### Changed

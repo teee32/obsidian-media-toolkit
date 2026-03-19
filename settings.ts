@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, DropdownComponent } from 'obsidian';
+import { App, PluginSettingTab, Setting } from 'obsidian';
 import ImageManagerPlugin from './main';
 import { Translations } from './utils/i18n';
 import { normalizeVaultPath } from './utils/path';
@@ -109,14 +109,16 @@ export class SettingsTab extends PluginSettingTab {
 		containerEl.empty();
 
 		// 使用翻译
-		containerEl.createEl('h2', { text: this.t('pluginSettings') });
+		new Setting(containerEl)
+			.setName(this.t('pluginSettings'))
+			.setHeading();
 
 		// 媒体文件夹设置
 		new Setting(containerEl)
 			.setName(this.t('mediaFolder'))
 			.setDesc(this.t('mediaFolderDesc'))
 			.addText(text => text
-				.setPlaceholder('attachments/media')
+				.setPlaceholder('Attachments/media')
 				.setValue(this.plugin.settings.imageFolder)
 				.onChange(async (value) => {
 					this.plugin.settings.imageFolder = normalizeVaultPath(value);
@@ -205,7 +207,9 @@ export class SettingsTab extends PluginSettingTab {
 		containerEl.createEl('hr', { cls: 'settings-divider' });
 
 		// 安全删除设置
-		containerEl.createEl('h3', { text: this.t('safeDeleteSettings') });
+		new Setting(containerEl)
+			.setName(this.t('safeDeleteSettings'))
+			.setHeading();
 
 		// 使用隔离文件夹
 		new Setting(containerEl)
@@ -223,7 +227,7 @@ export class SettingsTab extends PluginSettingTab {
 			.setName(this.t('trashFolderPath'))
 			.setDesc(this.t('trashFolderPathDesc'))
 			.addText(text => text
-				.setPlaceholder('obsidian-media-toolkit-trash')
+				.setPlaceholder('Media-toolkit-trash')
 				.setValue(this.plugin.settings.trashFolder)
 				.onChange(async (value) => {
 					this.plugin.settings.trashFolder = normalizeVaultPath(value);
@@ -260,7 +264,9 @@ export class SettingsTab extends PluginSettingTab {
 		containerEl.createEl('hr', { cls: 'settings-divider' });
 
 		// 安全扫描设置
-		containerEl.createEl('h3', { text: this.t('safeScanSettings') });
+		new Setting(containerEl)
+			.setName(this.t('safeScanSettings'))
+			.setHeading();
 
 		new Setting(containerEl)
 			.setName(this.t('safeScan'))
@@ -304,7 +310,9 @@ export class SettingsTab extends PluginSettingTab {
 		containerEl.createEl('hr', { cls: 'settings-divider' });
 
 		// 重复检测设置
-		containerEl.createEl('h3', { text: this.t('duplicateDetectionSettings') });
+		new Setting(containerEl)
+			.setName(this.t('duplicateDetectionSettings'))
+			.setHeading();
 
 		new Setting(containerEl)
 			.setName(this.t('duplicateThresholdSetting'))
@@ -324,7 +332,9 @@ export class SettingsTab extends PluginSettingTab {
 		containerEl.createEl('hr', { cls: 'settings-divider' });
 
 		// 媒体类型过滤
-		containerEl.createEl('h3', { text: this.t('mediaTypes') });
+		new Setting(containerEl)
+			.setName(this.t('mediaTypes'))
+			.setHeading();
 
 		new Setting(containerEl)
 			.setName(this.t('enableImageSupport'))
@@ -374,7 +384,9 @@ export class SettingsTab extends PluginSettingTab {
 		containerEl.createEl('hr', { cls: 'settings-divider' });
 
 		// 视图设置
-		containerEl.createEl('h3', { text: this.t('viewSettings') });
+		new Setting(containerEl)
+			.setName(this.t('viewSettings'))
+			.setHeading();
 
 		// 语言设置
 		new Setting(containerEl)
@@ -428,25 +440,31 @@ export class SettingsTab extends PluginSettingTab {
 		containerEl.createEl('hr', { cls: 'settings-divider' });
 
 		// 帮助信息
-		containerEl.createEl('h3', { text: this.t('keyboardShortcuts') });
+		new Setting(containerEl)
+			.setName(this.t('keyboardShortcuts'))
+			.setHeading();
 		containerEl.createEl('p', {
 			text: this.t('shortcutsDesc'),
 			cls: 'settings-description'
 		});
-		containerEl.createEl('ul', { cls: 'settings-list' }).createEl('li', { text: this.t('shortcutOpenLibrary') });
-		containerEl.createEl('ul', { cls: 'settings-list' }).createEl('li', { text: this.t('shortcutFindUnreferenced') });
-		containerEl.createEl('ul', { cls: 'settings-list' }).createEl('li', { text: this.t('shortcutOpenTrash') });
+		const shortcutsList = containerEl.createEl('ul', { cls: 'settings-list' });
+		shortcutsList.createEl('li', { text: this.t('shortcutOpenLibrary') });
+		shortcutsList.createEl('li', { text: this.t('shortcutFindUnreferenced') });
+		shortcutsList.createEl('li', { text: this.t('shortcutOpenTrash') });
 
-		containerEl.createEl('h3', { text: this.t('commands') });
+		new Setting(containerEl)
+			.setName(this.t('commands'))
+			.setHeading();
 		containerEl.createEl('p', {
 			text: this.t('commandsDesc'),
 			cls: 'settings-description'
 		});
-		containerEl.createEl('ul', { cls: 'settings-list' }).createEl('li', { text: this.t('cmdOpenLibrary') });
-		containerEl.createEl('ul', { cls: 'settings-list' }).createEl('li', { text: this.t('cmdFindUnreferenced') });
-		containerEl.createEl('ul', { cls: 'settings-list' }).createEl('li', { text: this.t('cmdTrashManagement') });
-		containerEl.createEl('ul', { cls: 'settings-list' }).createEl('li', { text: this.t('cmdAlignLeft') });
-		containerEl.createEl('ul', { cls: 'settings-list' }).createEl('li', { text: this.t('cmdAlignCenter') });
-		containerEl.createEl('ul', { cls: 'settings-list' }).createEl('li', { text: this.t('cmdAlignRight') });
+		const commandsList = containerEl.createEl('ul', { cls: 'settings-list' });
+		commandsList.createEl('li', { text: this.t('cmdOpenLibrary') });
+		commandsList.createEl('li', { text: this.t('cmdFindUnreferenced') });
+		commandsList.createEl('li', { text: this.t('cmdTrashManagement') });
+		commandsList.createEl('li', { text: this.t('cmdAlignLeft') });
+		commandsList.createEl('li', { text: this.t('cmdAlignCenter') });
+		commandsList.createEl('li', { text: this.t('cmdAlignRight') });
 	}
 }

@@ -1,4 +1,4 @@
-import { Modal, Notice, TFile } from 'obsidian';
+import { App, Modal, Notice, TFile } from 'obsidian';
 import ImageManagerPlugin from '../main';
 import { getDocumentDisplayLabel, getMediaType } from '../utils/mediaTypes';
 
@@ -11,7 +11,7 @@ export class MediaPreviewModal extends Modal {
 	private onDidClose: (() => void) | null = null;
 
 	constructor(
-		app: any,
+		app: App,
 		plugin: ImageManagerPlugin,
 		file: TFile,
 		allFiles: TFile[] = [],
@@ -96,7 +96,7 @@ export class MediaPreviewModal extends Modal {
 			});
 			audio.src = this.app.vault.getResourcePath(file);
 		} else if (isPdf) {
-			const iframe = container.createEl('iframe', {
+			container.createEl('iframe', {
 				cls: 'preview-pdf',
 				attr: {
 					src: this.app.vault.getResourcePath(file),
@@ -193,7 +193,7 @@ export class MediaPreviewModal extends Modal {
 		findBtn.textContent = this.plugin.t('findInNotes');
 		findBtn.addEventListener('click', () => {
 			this.close();
-			this.plugin.openImageInNotes(file);
+			void this.plugin.openImageInNotes(file);
 		});
 	}
 
@@ -272,7 +272,9 @@ export class MediaPreviewModal extends Modal {
 		if (this.onDidClose) {
 			try {
 				this.onDidClose();
-			} catch (_) {}
+			} catch (error) {
+				console.debug('媒体预览关闭回调执行失败:', error);
+			}
 		}
 	}
 }

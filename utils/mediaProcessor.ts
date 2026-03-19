@@ -40,15 +40,19 @@ const MIME_MAP: Record<string, string> = {
 	'avif': 'image/avif'
 };
 
+function toError(error: unknown, fallbackMessage: string): Error {
+	return error instanceof Error ? error : new Error(fallbackMessage);
+}
+
 /**
  * 检测浏览器是否支持某种输出格式
  */
-export async function isFormatSupported(format: string): Promise<boolean> {
+export function isFormatSupported(format: string): Promise<boolean> {
 	const canvas = document.createElement('canvas');
 	canvas.width = 1;
 	canvas.height = 1;
 	const ctx = canvas.getContext('2d');
-	if (!ctx) return false;
+	if (!ctx) return Promise.resolve(false);
 	ctx.fillRect(0, 0, 1, 1);
 
 	return new Promise((resolve) => {
@@ -117,8 +121,6 @@ export async function processImage(
 
 	// 绘制图片
 	if (options.crop) {
-		const scaleX = targetW / srcW;
-		const scaleY = targetH / srcH;
 		ctx.drawImage(
 			img,
 			options.crop.x, options.crop.y, options.crop.width, options.crop.height,
@@ -269,7 +271,7 @@ export function extractVideoFrame(
 					0.8
 				);
 			} catch (error) {
-				reject(error);
+				reject(toError(error, 'Video frame extraction failed'));
 			}
 		});
 
