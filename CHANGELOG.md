@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.22] - 2026-03-20
+
+### Fixed
+- 修复社区审核剩余的 `Required` 项：移除对同步函数的多余 `await`、将 `loadTrashItems` 调整为同步刷新流程，并避免拆出未绑定的 `vault.getFiles` 方法引用
+
+### Added
+- 新增真实回归测试，覆盖媒体库刷新、隔离管理、安全扫描、未引用媒体扫描，以及同名附件的 Wiki basename 链接改写场景
+
+---
+
 ## [1.1.21] - 2026-03-19
 
 ### Fixed
