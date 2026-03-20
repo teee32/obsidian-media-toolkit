@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.23] - 2026-03-20
+
+### Fixed
+- 移除 `syncPerformanceInfraSettings` 和 `refreshImages` 中不再需要的 `async` 声明，清理最新一轮社区审核指出的剩余 `Required` 项
+- 清理图像对齐和媒体处理中的未使用局部变量，减少当前一轮 `Optional` 警告
+
+---
+
 ## [1.1.22] - 2026-03-20
 
 ### Fixed

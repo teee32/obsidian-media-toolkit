@@ -52,7 +52,6 @@ export class ImageAlignment {
 		// 匹配标准 Markdown 图片语法 ![alt](image.png)
 		const mdImageMatch = cleanMarkdown.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
 		if (mdImageMatch) {
-			const altText = mdImageMatch[1];
 			const imagePath = mdImageMatch[2];
 			// 转换为 Wiki 链接语法 + 对齐参数
 			return `![[${imagePath}|${alignment}]]`;

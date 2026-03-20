@@ -312,7 +312,7 @@ export default class ImageManagerPlugin extends Plugin {
 	 * 同步性能基础设施配置
 	 * 当媒体类型或隔离目录发生变化时，需要重建文件索引
 	 */
-	private async syncPerformanceInfraSettings(forceFullScan: boolean = false): Promise<void> {
+	private syncPerformanceInfraSettings(forceFullScan: boolean = false): Promise<void> {
 		const enabledExtensions = getEnabledExtensions(this.settings);
 		const trashFolder = normalizeVaultPath(this.settings.trashFolder) || DEFAULT_SETTINGS.trashFolder;
 		const extensionsKey = [...enabledExtensions].sort().join('|');
@@ -329,6 +329,8 @@ export default class ImageManagerPlugin extends Plugin {
 		if (needsRescan) {
 			this.fileIndex.fullScan();
 		}
+
+		return Promise.resolve();
 	}
 
 	/**

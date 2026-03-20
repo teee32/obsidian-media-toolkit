@@ -71,10 +71,10 @@ export class ImageLibraryView extends ItemView {
 		return Promise.resolve();
 	}
 
-	async refreshImages() {
+	refreshImages(): Promise<void> {
 		// 如果视图已关闭或 contentEl 不可用，直接返回
 		if (!this.contentEl) {
-			return;
+			return Promise.resolve();
 		}
 
 		// 同步最新分页设置，保证设置变更后立即生效
@@ -167,6 +167,8 @@ export class ImageLibraryView extends ItemView {
 				text: this.searchQuery ? this.plugin.t('noMatchingFiles') : this.plugin.t('noMediaFiles')
 			});
 		}
+
+		return Promise.resolve();
 	}
 
 	/**

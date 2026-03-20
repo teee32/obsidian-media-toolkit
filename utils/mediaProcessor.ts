@@ -87,15 +87,9 @@ export async function processImage(
 	const img = await loadImage(src);
 
 	let { width: srcW, height: srcH } = img;
-	let drawX = 0;
-	let drawY = 0;
-	let drawW = srcW;
-	let drawH = srcH;
 
 	// 裁剪
 	if (options.crop) {
-		drawX = -options.crop.x;
-		drawY = -options.crop.y;
 		srcW = options.crop.width;
 		srcH = options.crop.height;
 	}
